@@ -1,24 +1,24 @@
 # Pet2Dial
 
-Turn the Codex desktop pet into a tiny external hardware companion on an M5Stack Dial.
+Turn the Codex desktop pet into a tiny external hardware companion and rotary task remote on an M5Stack Dial.
 
-Pet2Dial is a Codex skill and hardware bridge that takes the currently selected Codex custom pet, converts its official animated pet atlas into M5Stack Dial firmware assets, flashes the Dial, and keeps it synchronized over Bluetooth Low Energy. The Dial becomes a physical "second screen" for Codex: the pet lives outside the laptop display, task cards can be selected with the rotary encoder, and tapping the screen opens the matching Codex conversation.
+Pet2Dial is a Codex skill and hardware bridge that takes the currently selected Codex custom pet, converts its official animated pet atlas into M5Stack Dial firmware assets, flashes the Dial, and keeps it synchronized over Bluetooth Low Energy. The goal is to preserve the feel of the official Codex pet experience while moving it out of the Mac display and onto the desk. The Dial becomes both a small physical pet companion and a handheld-style remote: rotate to browse running or review tasks, tap to open the matching Codex conversation.
 
 ![Pet2Dial running on M5Stack Dial](docs/images/pet2dial-on-m5stack-dial.jpg)
 
 ## Why This Exists
 
-Codex already has a delightful pet mode inside the desktop app. Pet2Dial asks a simple question: what if that pet could leave the screen?
+Codex already has a delightful pet mode inside the desktop app. Pet2Dial asks a simple question: what if that pet could leave the screen and sit on the desk?
 
 The result is a small desk companion for people who run many Codex tasks at once. It shows:
 
 - the same selected Codex custom pet, converted from the official pet atlas
 - current running Codex tasks
 - completed tasks waiting for review
-- a rotary task card UI made for the Dial
-- tap-to-open navigation back into Codex Desktop
+- a rotary task card UI made for the Dial's physical knob
+- tap-to-open navigation back into the matching Codex Desktop conversation
 
-The project uses the M5Stack Dial as an always-visible, tactile status surface instead of another window on the Mac.
+The project uses the M5Stack Dial as an always-visible, tactile status surface and a compact Codex remote instead of another window on the Mac.
 
 ## Hardware
 

@@ -2,19 +2,20 @@
 
 ## Elevator Pitch
 
-Pet2Dial turns the Codex desktop pet into a small physical companion on an M5Stack Dial. It converts the selected Codex custom pet into Dial firmware, then syncs live running and review tasks over Bluetooth. The result is a tactile, glanceable AI workspace companion that lives outside the laptop screen.
+Pet2Dial recreates the Codex desktop pet on an M5Stack Dial, then turns the Dial into a rotary remote for Codex tasks: rotate to browse, tap to open the matching conversation.
 
 ## Story
 
-Modern AI coding tools are powerful, but they also create a new kind of attention problem. When several agents are running, finished, or waiting for review, the user has to keep checking the desktop UI. Pet2Dial moves that status surface onto a tiny piece of hardware.
+Modern AI coding tools are powerful, but they also create a new kind of attention problem. When several agents are running, finished, or waiting for review, the user has to keep checking the desktop UI. Pet2Dial moves that status surface onto a tiny piece of hardware and makes it feel like part of the desk.
 
-The idea started from a simple feeling: the Codex pet already makes long-running work feel more alive. I wanted that pet to leave the screen and become a real desk object. The M5Stack Dial is a good fit because it has a circular screen, touch input, a rotary encoder, BLE, and an ESP32-S3 controller in a compact form.
+The idea started from a simple feeling: the Codex pet already makes long-running work feel more alive. I wanted that pet to leave the Mac screen and become a real desk object. The M5Stack Dial is a good fit because it has a circular screen, touch input, a rotary encoder, BLE, and an ESP32-S3 controller in a compact form.
 
-Pet2Dial keeps Codex as the source of truth. The Mac bridge reads the local Codex pet package and task state. The firmware renders the pet and a small task UI. Rotating the Dial opens task cards; tapping a card opens the corresponding Codex conversation on the Mac.
+Pet2Dial keeps Codex as the source of truth. The Mac bridge reads the local Codex pet package and task state. The firmware renders a close hardware version of the official pet experience plus a small task UI. Rotating the Dial opens task cards; tapping a card opens the corresponding Codex conversation on the Mac. In daily use it behaves like a small physical pet and a handheld-style remote for the AI workspace.
 
 ## What Makes It Special
 
-- It is not a generic notification display. It mirrors a real Codex pet and task workflow.
+- It is a physical extension of Codex, with the selected Codex pet moved from the Mac screen onto the desk.
+- It works like a rotary task remote: turn the knob to browse running/review tasks and tap to jump back to the exact Codex conversation.
 - It uses the official Codex custom pet atlas format instead of arbitrary static images.
 - It turns the Dial's rotary encoder into a natural task selector.
 - It keeps USB free after flashing by using Bluetooth Low Energy for daily sync.

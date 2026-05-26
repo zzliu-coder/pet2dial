@@ -1,0 +1,88 @@
+Elevator pitch
+
+Pet2Dial recreates the Codex desktop pet on an M5Stack Dial, then turns the Dial into a rotary remote for Codex tasks: rotate to browse, tap to open the matching conversation.
+
+Story
+
+Codex already has a pet mode inside the desktop app. Pet2Dial moves that experience out of the Mac screen and onto the desk. The result is a small physical companion that shows the selected Codex pet, live running tasks, and completed tasks waiting for review.
+
+The project is designed around the M5Stack Dial's strengths. The circular display makes the pet feel like a small object rather than another window. The rotary encoder becomes a natural way to browse tasks. Touch gives a direct action: tap the selected task card and Codex opens the matching conversation on the Mac.
+
+This makes the Dial feel a little like a handheld remote for an AI coding workspace. In the idle state it is a desk pet. When the knob is turned, it becomes a task switcher for running and review work.
+
+What makes it special
+
+1. It is a physical extension of the Codex pet experience.
+2. It converts the selected Codex custom pet atlas instead of using a generic static icon.
+3. It syncs running and review task state over BLE.
+4. It uses the Dial's rotary encoder for task browsing.
+5. It supports tap-to-open navigation back into the exact Codex conversation.
+
+Hardware
+
+M5Stack Dial with M5StampS3 controller.
+Mac running Codex Desktop.
+USB-C cable for firmware upload.
+Bluetooth Low Energy for live sync after flashing.
+
+How it works
+
+The project has three parts.
+
+First, the pet converter reads the selected Codex custom pet from the local Codex pet folder. It converts the official animated pet atlas into compact RGB565 frames for the M5Stack Dial firmware.
+
+Second, the firmware renders the pet and the task UI. The idle view keeps the pet visible. Running and review counters sit above it. Rotating the Dial opens a task card view where the pet shrinks and the selected task becomes readable.
+
+Third, the Mac bridge syncs Codex state to the Dial over BLE. It sends the current pet mode, running tasks, and review tasks. When the user taps a card, the Dial sends an event back to the Mac bridge, and the bridge opens the matching Codex conversation.
+
+Interaction model
+
+Idle view: the pet sits on the Dial, with running and review counters above it.
+Rotate: the Dial becomes a task browser.
+Tap: open the selected Codex conversation on the Mac.
+Rotate away: after a review card has been opened, it can leave the visible review queue.
+
+Build steps
+
+Clone the repository:
+git clone https://github.com/codingbull87/pet2dial.git
+cd pet2dial
+
+Run the environment check:
+python3 skill/pet2dial/scripts/pet2dial.py doctor
+
+Create the generated working project:
+python3 skill/pet2dial/scripts/pet2dial.py init --force
+
+Install local dependencies:
+python3 skill/pet2dial/scripts/pet2dial.py setup-env
+
+Convert the selected Codex pet:
+python3 skill/pet2dial/scripts/pet2dial.py convert
+
+Build and upload the firmware:
+python3 skill/pet2dial/scripts/pet2dial.py build
+python3 skill/pet2dial/scripts/pet2dial.py upload
+
+Run the BLE bridge:
+python3 skill/pet2dial/scripts/pet2dial.py run-bridge
+
+Validation
+
+The current prototype validates the full success path: Codex pet detection, atlas conversion, PlatformIO firmware build, BLE bridge snapshot generation, M5Stack Dial upload, pet display, rotary task browsing, and tap-to-open conversation navigation.
+
+Observed firmware usage from the working prototype:
+RAM: 15.4%
+Flash: 78.9%
+
+Why M5Stack Dial
+
+The Dial is a strong fit because the round display, touch input, rotary encoder, BLE, and ESP32-S3 are all part of the core experience. This project uses the Dial as the controller, display, input device, and BLE endpoint.
+
+GitHub
+
+https://github.com/codingbull87/pet2dial
+
+中文摘要
+
+Pet2Dial 把 Codex 桌面里的宠物搬到 M5Stack Dial 上。它读取 Codex 当前选择的 custom pet，把官方宠物 atlas 转成 Dial 固件资源，并通过蓝牙同步 Codex 的运行中任务和待 review 任务。旋转 Dial 可以浏览任务卡片，点击卡片会打开对应的 Codex 会话。它既是桌面宠物，也是一个用于 Codex 任务切换和会话跳转的小型实体遥控器。
