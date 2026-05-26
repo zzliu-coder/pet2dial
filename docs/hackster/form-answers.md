@@ -12,7 +12,7 @@ To be filled after Hackster publishing.
 
 ## GitHub Repository
 
-To be filled after GitHub publishing.
+https://github.com/codingbull87/pet2dial
 
 ## Short Description
 

@@ -108,7 +108,7 @@ This lets a review card remain visible while the user is still looking at it. Th
 Clone the repository:
 
 ```bash
-git clone https://github.com/<your-name>/pet2dial.git
+git clone https://github.com/codingbull87/pet2dial.git
 cd pet2dial
 ```
 
@@ -210,7 +210,7 @@ The second challenge was review semantics. A finished task should not disappear 
 Repository:
 
 ```text
-https://github.com/<your-name>/pet2dial
+https://github.com/codingbull87/pet2dial
 ```
 
 ## 中文摘要
