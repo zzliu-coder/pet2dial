@@ -1,0 +1,12 @@
+.DS_Store
+__pycache__/
+*.py[cod]
+.venv/
+.pio/
+logs/
+state/
+firmware/include/pet_frames.h
+templates/project/firmware/.pio/
+templates/project/state/
+templates/project/logs/
+tmp/

@@ -1,0 +1,17 @@
+[
+  {
+    "name": "first_install",
+    "prompt": "把我当前 Codex pet 刷到 M5Stack Dial 上，并用蓝牙同步任务。",
+    "expected_behavior": "Use pet2dial. Run doctor, initialize the project, set up dependencies, convert the selected Codex pet, build, upload, run bridge, and verify."
+  },
+  {
+    "name": "refresh_pet",
+    "prompt": "我刚在 Codex 里换了宠物，把 Dial 也刷新成新的。",
+    "expected_behavior": "Use pet2dial. Convert the currently selected Codex pet, rebuild and upload firmware, then run or restart the BLE bridge."
+  },
+  {
+    "name": "near_miss_arbitrary_image",
+    "prompt": "我有一张 PNG，帮我直接刷到 Dial 当宠物。",
+    "expected_behavior": "Do not use pet2dial as the image-generation path. Explain that pet2dial expects an existing Codex-compatible pet package; create or install the Codex pet first."
+  }
+]
