@@ -79,7 +79,7 @@ Bridge:
 - Bridge reads Codex local files from `~/.codex`.
 - Bridge writes only its own generated project state under `<project>/state`.
 - Bridge opens Codex conversations with `codex://threads/<thread_id>`.
-- Daily bridge mode uses an isolated project venv, a generated background `CodexDialBridge.app` with Bluetooth usage description, and an optional user LaunchAgent.
+- Daily bridge mode uses an isolated project venv, a generated `CodexDialBridge.app` with Bluetooth usage description, and an optional user LaunchAgent.
 - Advanced users may run with global Python, but the open-source success path should prefer the isolated venv.
 
 ## Task State Contract
@@ -94,6 +94,8 @@ Dial cards exclude:
 - `turn_aborted`
 - review threads already marked seen by this bridge
 
+`turn_aborted` can still drive the visual pet mode `failed` for a short recent failure window. It does not become a Dial task card.
+
 Review visibility rule:
 
 - Clicking a review card opens the Codex conversation.
@@ -107,7 +109,8 @@ Pet source:
 
 - `~/.codex/pets/<pet-id>/pet.json`
 - `~/.codex/pets/<pet-id>/spritesheet.webp`
-- optional UI-selected custom pet id from `~/.codex/.codex-global-state.json`
+- selected custom pet id from `~/.codex/config.toml` `selected-avatar-id = "custom:<pet-id>"` when present
+- older UI first-awake custom pet history from `~/.codex/.codex-global-state.json` only as fallback
 
 Pet atlas rows mirror the Codex pet package shape:
 
@@ -130,13 +133,21 @@ Task source:
 - `event_msg.payload.message`
 - `event_msg.payload.turn_id`
 
+State source:
+
+- Pet2Dial's open-source default is rollout fallback mode.
+- Rollout fallback emits only official Codex pet state names.
+- Rollout fallback approximates `review` from new `task_complete` turns after baseline.
+- Rollout fallback approximates `waiting` from structured waiting event types such as `approval_request`, `request_user_input`, `waiting_on_approval`, and `waiting_on_user_input`.
+- If a future stable Codex app-server state API is available, it should feed the same official state names and priority order without changing the Dial wire contract.
+
 Bridge wire schema:
 
 ```json
 {
   "v": 1,
   "pet": "<pet-id>",
-  "mode": "idle|running|review",
+  "mode": "idle|waiting|failed|running|review",
   "now": 0,
   "bubbles": [
     {
@@ -153,9 +164,43 @@ Bridge wire schema:
 
 Allowed local bridge state:
 
-- `<project>/state/seen_done_threads.json`, which stores review thread ids already seen through this bridge.
+- `<project>/state/seen_done_threads.json`, schema v2, which stores review turn ids already seen through this bridge and a fallback baseline timestamp.
 
 Keep this contract narrow. Do not add independent pet catalogs, fake default pet ids, multi-pet firmware bundles, or task states that the bridge does not actually send.
+
+## Pet Animation State Contract
+
+The source atlas contains all Codex pet rows. Pet2Dial uses every row, with long-lived modes coming from Codex state and short actions coming from real Dial interaction:
+
+```text
+0 idle           connected, no running/review/recent failed mode
+1 running-right  transient while rotating forward through task cards
+2 running-left   transient while rotating backward through task cards
+3 waving         transient after BLE connect or tap-to-open
+4 jumping        transient when a new running/review card appears
+5 failed         recent Codex `turn_aborted`, with no running/review card taking priority
+6 waiting        BLE disconnected or explicit bridge waiting mode
+7 running        bridge mode from active Codex rollout activity
+8 review         bridge mode from unseen Codex `task_complete`
+```
+
+Priority order in firmware:
+
+```text
+BLE disconnected -> waiting
+active transient action -> running-right/running-left/waving/jumping
+bridge mode failed -> failed
+bridge mode running -> running
+bridge mode review -> review
+bridge mode waiting -> waiting
+default -> idle
+```
+
+Bridge mode priority:
+
+```text
+waiting > failed > running > review > idle
+```
 
 ## Environment Contract
 
@@ -218,13 +263,14 @@ Review backlog behavior:
 
 - `review` is derived from `event_msg.payload.type == "task_complete"`.
 - The bridge does not use an independent `done` state in its public wire schema.
-- On first bridge state initialization, existing historical `task_complete` threads are marked seen so the Dial does not show old Codex completions as current review cards.
-- `clear-review-backlog` marks all currently completed rollout threads as seen in the bridge-local state file without modifying Codex session files.
+- On first bridge state initialization or v1 state upgrade, existing historical `task_complete` turns are marked seen so the Dial does not show old Codex completions as current review cards.
+- Seen state is keyed by `thread_id + turn_id`, so a later completion in the same conversation can become a fresh review card.
+- `clear-review-backlog` marks all currently completed rollout turns as seen and refreshes the fallback baseline without modifying Codex session files.
 
 macOS bridge wrapper behavior:
 
 - The generated bridge app must include `NSBluetoothAlwaysUsageDescription` so CoreBluetooth access is authorized through macOS privacy controls.
-- The generated bridge app must include `LSUIElement = true` because it is a background device service, not a foreground Dock app.
+- The generated bridge app must include `LSUIElement = true` because it is a background device service.
 - Thread-opening must log the attempted `codex://threads/<thread_id>` URL result so click failures can be traced to Dial events, BLE delivery, or macOS URL handling.
 
 ## Open Source Boundary

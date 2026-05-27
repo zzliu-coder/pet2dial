@@ -38,7 +38,7 @@ Pet2Dial follows the shortest proven path:
 3. Convert the 8x9 atlas into one compact 96x96 RGB565 firmware resource.
 4. Build and flash M5Stack Dial firmware with PlatformIO.
 5. Start a Mac BLE bridge named `CodexDial`.
-6. Sync Codex pet state plus running/review tasks.
+6. Sync Codex pet state plus running/review tasks using official Codex pet state names.
 7. Open `codex://threads/<thread_id>` when a Dial card is tapped.
 
 The default build intentionally includes only one pet. This keeps flash usage stable and makes the first install predictable.
@@ -101,7 +101,29 @@ The idle view keeps the pet visible. Running and review counters sit above it.
 
 Rotating the Dial opens a task card view. The pet shrinks down and the card shows the selected task. Tapping opens the Codex conversation. A review card remains visible after the tap and is marked seen only after the user rotates away or returns to the pet view.
 
-Review cards are derived from Codex session events where `event_msg.payload.type == "task_complete"`. Existing historical completions are baselined as already seen so the Dial starts with current work instead of an old completion backlog. To clear the current review backlog manually:
+Pet2Dial preserves all 9 Codex pet atlas rows on the device:
+
+```text
+0 idle           connected, no waiting/failed/running/review mode
+1 running-right  transient while rotating forward through task cards
+2 running-left   transient while rotating backward through task cards
+3 waving         transient after BLE connect or tap-to-open
+4 jumping        transient when a new running/review card appears
+5 failed         recent Codex turn_aborted/task_failed/task_cancelled
+6 waiting        BLE disconnected or explicit bridge waiting mode
+7 running        active Codex rollout activity
+8 review         unseen Codex task_complete turn
+```
+
+The bridge uses the official long-lived priority order:
+
+```text
+waiting > failed > running > review > idle
+```
+
+The open-source default state source is a conservative rollout fallback. It reads local Codex session JSONL files and emits only official state names. `task_complete` is treated as the fallback source for `review`; structured waiting event types such as `approval_request` and `request_user_input` are treated as the fallback source for `waiting`. If Codex later exposes a stable external state API, that source can feed the same wire contract without creating a second task-state system.
+
+Review cards are derived from Codex session events where `event_msg.payload.type == "task_complete"`. Existing historical completions are baselined as already seen so the Dial starts with current work instead of an old completion backlog. Seen state is stored per completed turn, so a later completion in the same conversation can show up as a fresh review card. To clear the current review backlog manually:
 
 ```bash
 python3 skill/pet2dial/scripts/pet2dial.py clear-review-backlog
@@ -111,7 +133,7 @@ This behavior is implemented with a small BLE event protocol:
 
 ```text
 CLICK|<thread_id>  opens the Codex conversation
-LEAVE|<thread_id>  marks an opened review card as seen
+LEAVE|<thread_id>  marks the opened review turn as seen
 ```
 
 Bridge logs record both the incoming click and the result of opening the Codex URL. This makes the tap-to-open path diagnosable across the hardware, BLE bridge, and macOS URL handler boundary.
@@ -124,6 +146,14 @@ Pet2Dial uses Codex-compatible custom pets:
 ~/.codex/pets/<pet-id>/pet.json
 ~/.codex/pets/<pet-id>/spritesheet.webp
 ```
+
+When `--pet` is omitted, `auto` first reads Codex's selected custom pet from `~/.codex/config.toml`:
+
+```text
+selected-avatar-id = "custom:<pet-id>"
+```
+
+Older first-awake UI history is used only as a fallback.
 
 The expected atlas geometry is:
 

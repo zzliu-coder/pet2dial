@@ -19,7 +19,7 @@ The successful result is:
 
 - Dial firmware is flashed and advertises `CodexDial`.
 - The Dial displays the user's selected Codex custom pet with stable color and animation.
-- The pet uses official Codex atlas rows: `idle`, `running`, `review`, and `waiting` are mapped to the corresponding Dial states.
+- The pet uses all official Codex atlas rows: `idle`, `running-right`, `running-left`, `waving`, `jumping`, `failed`, `waiting`, `running`, and `review`.
 - The bridge syncs only active `running` tasks and `task_complete` tasks exposed as `review`.
 - Clicking a Dial card opens `codex://threads/<thread_id>`.
 - A review card remains visible after click and is marked seen only after the user leaves that card by rotating away or returning to the pet view.
@@ -40,6 +40,7 @@ Use the defaults unless the user explicitly asks otherwise:
 Pet selection rules:
 
 - `auto` means the currently selected Codex custom pet when Codex exposes one, with newest local custom pet as fallback.
+- The primary selected-pet source is `~/.codex/config.toml` `selected-avatar-id = "custom:<pet-id>"`; older first-awake UI history is only a fallback.
 - `--pet <pet-id>` pins a specific local pet package such as `~/.codex/pets/<pet-id>`.
 - Do not hard-code pet ids, user paths, or previous-run examples into open-source defaults.
 
@@ -149,19 +150,25 @@ python3 scripts/pet2dial.py uninstall-autostart
 
 Pet visual state:
 
-- `running` maps to the Codex `running` row.
-- `review` and `task_complete` map to the Codex `review` row.
-- disconnected or waiting maps to the Codex `waiting` row.
-- idle maps to the Codex `idle` row.
+- `idle` maps to atlas row 0 when BLE is connected and no running, review, or recent failed state is active.
+- `running-right` maps to atlas row 1 as a short Dial-local action while rotating the task selector forward.
+- `running-left` maps to atlas row 2 as a short Dial-local action while rotating the task selector backward.
+- `waving` maps to atlas row 3 as a short Dial-local action after BLE connect or tap-to-open.
+- `jumping` maps to atlas row 4 as a short Dial-local action when a new running or review card appears.
+- `failed` maps to atlas row 5 when a recent Codex rollout state is `turn_aborted`, `task_failed`, or `task_cancelled`.
+- `waiting` maps to atlas row 6 when BLE is disconnected or the bridge explicitly sends `waiting`.
+- `running` maps to atlas row 7 when the bridge sends `mode="running"`.
+- `review` maps to atlas row 8 when the bridge sends `mode="review"`.
 
 Task card state:
 
 - Bridge reads local Codex rollout JSONL files.
 - `user_message` or active output makes a thread `running`.
 - `event_msg.payload.type == "task_complete"` makes a thread `review`.
-- `turn_aborted` is filtered out of Dial task cards.
+- Structured waiting events such as `approval_request`, `request_user_input`, `waiting_on_approval`, and `waiting_on_user_input` can drive visual `waiting` mode in rollout fallback.
+- `turn_aborted`, `task_failed`, and `task_cancelled` can drive visual `failed` mode, but are filtered out of Dial task cards.
 - `CLICK|thread_id` opens the Codex thread.
-- `LEAVE|thread_id` marks an opened review card as seen.
+- `LEAVE|thread_id` marks the opened review turn as seen using `thread_id + turn_id`.
 - Existing historical `task_complete` threads should be baselined as seen so the Dial starts with the current Codex experience, not an old completion backlog.
 
 ## Subagents
@@ -183,7 +190,7 @@ python3 -m unittest discover -s tests
 python3 scripts/pet2dial.py --project ~/CodexDialPet verify
 ```
 
-Firmware proof is a successful PlatformIO build and upload. Runtime proof is a bridge log showing `Connected. Syncing Codex state.` followed by `Sync pet=<pet-id> mode=<running|review|idle> bubbles=...`.
+Firmware proof is a successful PlatformIO build and upload. Runtime proof is a bridge log showing `Connected. Syncing Codex state.` followed by `Sync pet=<pet-id> mode=<running|review|failed|idle> bubbles=...`.
 
 Service proof is:
 

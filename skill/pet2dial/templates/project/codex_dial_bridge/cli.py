@@ -65,9 +65,11 @@ class SimHandler(BaseHTTPRequestHandler):
             self._send_json(self.source.snapshot().to_wire())
             return
         if parsed.path == "/open":
-            thread_id = parse_qs(parsed.query).get("thread_id", [""])[0]
+            query = parse_qs(parsed.query)
+            thread_id = query.get("thread_id", [""])[0]
+            turn_id = query.get("turn_id", [""])[0]
             try:
-                mark_seen(thread_id)
+                mark_seen(thread_id, turn_id)
                 open_thread(thread_id)
             except ValueError as exc:
                 self._send_json({"ok": False, "error": str(exc)}, status=400)

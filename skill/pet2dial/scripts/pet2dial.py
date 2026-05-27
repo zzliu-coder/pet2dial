@@ -6,6 +6,7 @@ import json
 import os
 import platform
 import plistlib
+import re
 import shutil
 import subprocess
 import sys
@@ -59,6 +60,15 @@ def status(label: str, ok: bool, detail: str) -> bool:
 
 
 def selected_pet(codex_home: Path = DEFAULT_CODEX_HOME) -> str:
+    config_path = codex_home / "config.toml"
+    try:
+        config_text = config_path.read_text(encoding="utf-8")
+    except OSError:
+        config_text = ""
+    match = re.search(r'(?m)^\s*selected-avatar-id\s*=\s*"custom:([^"]+)"', config_text)
+    if match and pet_exists(codex_home, match.group(1)):
+        return match.group(1)
+
     state_path = codex_home / ".codex-global-state.json"
     try:
         data = json.loads(state_path.read_text(encoding="utf-8"))

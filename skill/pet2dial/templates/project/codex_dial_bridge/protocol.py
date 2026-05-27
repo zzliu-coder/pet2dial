@@ -50,7 +50,7 @@ def visual_signature(state: DialState) -> tuple:
     return (
         state.pet,
         state.mode,
-        tuple((item.thread_id, item.title, item.state) for item in state.bubbles[:MAX_BUBBLES]),
+        tuple((item.thread_id, item.turn_id, item.title, item.state) for item in state.bubbles[:MAX_BUBBLES]),
     )
 
 

@@ -12,7 +12,7 @@ Topology: sequential skill. No subagents.
 
 1. Any compliant runtime must guide or execute a local workflow that converts the selected Codex custom pet into M5Stack Dial firmware and runs a BLE bridge for Codex state.
 
-2. Success means a flashed Dial displays the selected Codex pet, receives running/review cards, and opens Codex threads when cards are clicked.
+2. Success means a flashed Dial displays the selected Codex pet using all 9 Codex atlas rows, receives running/review cards, and opens Codex threads when cards are clicked.
 
 3. Persisted artifacts:
 
@@ -69,12 +69,20 @@ The skill mirrors Codex task state from local rollout files and maintains bridge
 The skill's Codex coupling is intentionally strong and narrow:
 
 - Codex pet package: `pet.json` and `spritesheet.webp`
-- Codex selected-pet persistence when available
-- Codex rollout session files for running/review task cards
+- Codex selected-pet persistence from `~/.codex/config.toml` when available
+- Codex rollout session files for rollout fallback running/review/waiting/failed visual state
 - `codex://threads/<thread_id>` for card opening
-- bridge-local seen-review state only
+- bridge-local seen-review-turn state only
 
 Cleanup rule: remove fallback pet ids, multi-pet bundle paths, and synthetic task states when they do not come from the Codex data contract or the bridge's own seen-state file.
+
+Official-state boundary:
+
+- Official animation rows and state names are fixed: `idle`, `running-right`, `running-left`, `waving`, `jumping`, `failed`, `waiting`, `running`, `review`.
+- The current open-source bridge does not depend on Codex Desktop's experimental app-server runtime state.
+- The rollout fallback keeps the same official names and priority order: `waiting > failed > running > review > idle`.
+- `task_complete` is a fallback event source for `review`; it is not a public task state name.
+- Review seen state is keyed by completed turn, not only by thread.
 
 ## Service Upgrade Packet
 
@@ -82,8 +90,6 @@ Observed Symptoms:
 
 - `run-bridge` exposed project paths, venv state, missing dependencies, and raw Python/macOS failures to the user.
 - macOS killed raw Python BLE scans when the process lacked `NSBluetoothAlwaysUsageDescription`.
-- The macOS bridge wrapper initially appeared in the Dock because it lacked `LSUIElement=true`.
-- Tap-to-open failures were hard to diagnose because `open_thread()` did not log the result of `/usr/bin/open codex://...`.
 - A previous selected pet id could leak into `auto` snapshots while a user wanted a different installed pet.
 - Running the bridge required a foreground terminal and had no standard status, restart, or log surface.
 
@@ -102,7 +108,6 @@ Positive Success Path:
 - `install-autostart` installs a LaunchAgent so login starts the bridge automatically.
 - `status`, `logs`, and `restart-bridge` provide a user-visible service surface.
 - `--pet <pet-id>` pins a specific local pet while `auto` remains the portable default.
-- The generated wrapper is a background agent app and thread-opening logs success or failure.
 
 Structural Levers:
 
@@ -115,7 +120,7 @@ Preserved Invariants:
 
 - The visual source is still a Codex custom pet package under `~/.codex/pets/<pet-id>`.
 - The firmware still embeds one 96x96 RGB565 atlas by default.
-- The bridge still reads local Codex rollout files and emits only running/review cards.
+- The bridge still reads local Codex rollout files and emits only running/review cards. Recent failure and waiting signals can drive visual pet modes, but they are not emitted as task cards.
 - USB is still needed for flashing; BLE is used for daily sync.
 
 Behavior Proof:

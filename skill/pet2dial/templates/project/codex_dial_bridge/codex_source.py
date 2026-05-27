@@ -8,10 +8,19 @@ from pathlib import Path
 from typing import Any
 
 from .protocol import Bubble, DialState, MAX_BUBBLES
-from .seen_state import DEFAULT_SEEN_PATH, load_seen, save_seen
+from .seen_state import DEFAULT_SEEN_PATH, SeenState, is_seen, load_seen_state, review_key, save_seen_state
 
 TITLE_MAX = 34
 DEFAULT_CODEX_HOME = Path.home() / ".codex"
+FAILED_WINDOW_SECONDS = 300
+WAITING_WINDOW_SECONDS = 1800
+WAITING_EVENT_TYPES = {
+    "approval_request",
+    "request_user_input",
+    "user_input_requested",
+    "waiting_on_approval",
+    "waiting_on_user_input",
+}
 
 
 def _content_text(content: Any) -> str:
@@ -68,6 +77,18 @@ def newest_pet_id(codex_home: Path | None = None) -> str:
 
 def ui_selected_pet_id(codex_home: Path | None = None) -> str:
     home = codex_home or DEFAULT_CODEX_HOME
+    config_path = home / "config.toml"
+    try:
+        config_text = config_path.read_text(encoding="utf-8")
+    except OSError:
+        config_text = ""
+    match = re.search(r'(?m)^\s*selected-avatar-id\s*=\s*"custom:([^"]+)"', config_text)
+    if match:
+        pet_id = match.group(1)
+        pet_dir = home / "pets" / pet_id
+        if (pet_dir / "pet.json").exists() and (pet_dir / "spritesheet.webp").exists():
+            return pet_id
+
     path = home / ".codex-global-state.json"
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -162,14 +183,17 @@ def summarize_session(path: Path) -> SessionSummary | None:
                                 title = compact_title(text)
                             state = "running"
                             turn_id = ""
+                    elif event_type in WAITING_EVENT_TYPES:
+                        state = "waiting"
+                        turn_id = payload.get("turn_id", turn_id)
                     elif event_type == "task_complete":
                         state = "review"
                         turn_id = payload.get("turn_id", turn_id)
-                    elif event_type == "turn_aborted":
-                        state = "aborted"
+                    elif event_type in {"turn_aborted", "task_failed", "task_cancelled"}:
+                        state = "failed"
                         turn_id = payload.get("turn_id", turn_id)
-                    elif event_type in {"agent_message_delta", "exec_command_begin", "token_count"}:
-                        if state not in {"review", "aborted"}:
+                    elif event_type in {"task_started", "agent_message_delta", "exec_command_begin", "token_count"}:
+                        if state not in {"waiting", "review", "failed"}:
                             state = "running"
     except OSError:
         return None
@@ -206,37 +230,39 @@ class CodexSource:
     def snapshot(self, limit: int = MAX_BUBBLES) -> DialState:
         summaries: list[SessionSummary] = []
         seen_path = self.resolved_seen_path()
-        seen_done_threads = load_seen(seen_path)
-        cleaned_seen = False
-        initialized_seen = seen_path.exists()
+        seen_state = load_seen_state(seen_path)
+        now = time.time()
         for path in self.session_paths()[: max(48, limit * 6)]:
             summary = summarize_session(path)
             if summary:
-                if summary.state == "running" and summary.thread_id in seen_done_threads:
-                    seen_done_threads.remove(summary.thread_id)
-                    cleaned_seen = True
-                if summary.state not in {"running", "review"}:
+                if summary.state not in {"waiting", "failed", "running", "review"}:
                     continue
                 summaries.append(summary)
 
-        if not initialized_seen:
-            historical_reviews = {item.thread_id for item in summaries if item.state == "review"}
-            save_seen(historical_reviews, seen_path)
-            seen_done_threads = historical_reviews
+        if seen_state.needs_baseline:
+            seen_state = SeenState(
+                baseline_created_at=now,
+                completed_before=now,
+                seen_turns={review_key(item.thread_id, item.turn_id) for item in summaries if item.state == "review"},
+            )
+            save_seen_state(seen_state, seen_path)
 
         filtered: list[SessionSummary] = []
         for summary in summaries:
-            if summary.state == "review" and summary.thread_id in seen_done_threads:
+            if summary.state not in {"running", "review"}:
+                continue
+            if summary.state == "review" and is_seen(seen_state, summary.thread_id, summary.turn_id, summary.updated_at):
                 continue
             filtered.append(summary)
             if len(filtered) >= limit:
                 break
 
-        if cleaned_seen:
-            save_seen(seen_done_threads, seen_path)
-
         mode = "idle"
-        if any(item.state == "running" for item in filtered):
+        if any(item.state == "waiting" and now - item.updated_at <= WAITING_WINDOW_SECONDS for item in summaries):
+            mode = "waiting"
+        elif any(item.state == "failed" and now - item.updated_at <= FAILED_WINDOW_SECONDS for item in summaries):
+            mode = "failed"
+        elif any(item.state == "running" for item in filtered):
             mode = "running"
         elif any(item.state == "review" for item in filtered):
             mode = "review"
@@ -244,19 +270,22 @@ class CodexSource:
         return DialState(
             pet=self.current_pet(),
             mode=mode,
-            now=time.time(),
+            now=now,
             bubbles=[item.to_bubble() for item in filtered[:limit]],
         )
 
     def mark_current_reviews_seen(self) -> int:
         seen_path = self.resolved_seen_path()
-        seen_done_threads = load_seen(seen_path)
-        before = len(seen_done_threads)
+        seen_state = load_seen_state(seen_path)
+        before = len(seen_state.seen_turns)
+        now = time.time()
+        seen_state.baseline_created_at = seen_state.baseline_created_at or now
+        seen_state.completed_before = max(seen_state.completed_before, now)
         for path in self.session_paths():
             summary = summarize_session(path)
             if not summary:
                 continue
             if summary.state == "review":
-                seen_done_threads.add(summary.thread_id)
-        save_seen(seen_done_threads, seen_path)
-        return len(seen_done_threads) - before
+                seen_state.seen_turns.add(review_key(summary.thread_id, summary.turn_id))
+        save_seen_state(seen_state, seen_path)
+        return len(seen_state.seen_turns) - before
