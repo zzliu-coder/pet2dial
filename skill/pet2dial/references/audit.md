@@ -66,6 +66,61 @@ These were useful exploration topics during the original run, but they do not be
 
 The skill mirrors Codex task state from local rollout files and maintains bridge-local review seen state. It does not currently consume Codex Desktop's internal Electron `thread-read-state-changed` IPC state because no stable public local persistence point was found during the run.
 
+The skill's Codex coupling is intentionally strong and narrow:
+
+- Codex pet package: `pet.json` and `spritesheet.webp`
+- Codex selected-pet persistence when available
+- Codex rollout session files for running/review task cards
+- `codex://threads/<thread_id>` for card opening
+- bridge-local seen-review state only
+
+Cleanup rule: remove fallback pet ids, multi-pet bundle paths, and synthetic task states when they do not come from the Codex data contract or the bridge's own seen-state file.
+
+## Service Upgrade Packet
+
+Observed Symptoms:
+
+- `run-bridge` exposed project paths, venv state, missing dependencies, and raw Python/macOS failures to the user.
+- macOS killed raw Python BLE scans when the process lacked `NSBluetoothAlwaysUsageDescription`.
+- A previous selected pet id could leak into `auto` snapshots while a user wanted a different installed pet.
+- Running the bridge required a foreground terminal and had no standard status, restart, or log surface.
+
+Shared Pressure:
+
+- The bridge was shaped as a developer command after the firmware experiment succeeded.
+- Open-source users need a device-service mental model with self-healing setup and visible health.
+
+Natural Failure Mechanism:
+
+- Users run the command from a clean machine or changed Codex pet state, hit an environment or BLE permission failure, and receive a traceback or stale pet result with no next action.
+
+Positive Success Path:
+
+- `run-bridge` initializes the project, creates the venv, installs missing dependencies, generates a Bluetooth-capable macOS app wrapper, and starts the bridge.
+- `install-autostart` installs a LaunchAgent so login starts the bridge automatically.
+- `status`, `logs`, and `restart-bridge` provide a user-visible service surface.
+- `--pet <pet-id>` pins a specific local pet while `auto` remains the portable default.
+
+Structural Levers:
+
+- Move environment repair into `scripts/pet2dial.py`.
+- Make LaunchAgent operations first-class commands.
+- Expand `doctor` from static prerequisites to service health.
+- Keep user-specific pet ids and local paths out of the skill package.
+
+Preserved Invariants:
+
+- The visual source is still a Codex custom pet package under `~/.codex/pets/<pet-id>`.
+- The firmware still embeds one 96x96 RGB565 atlas by default.
+- The bridge still reads local Codex rollout files and emits only running/review cards.
+- USB is still needed for flashing; BLE is used for daily sync.
+
+Behavior Proof:
+
+- Structural validation must pass.
+- Parser smoke tests must cover `doctor`, `run-bridge --help`, `install-autostart --help`, `status`, and `logs`.
+- Runtime proof remains a successful build/upload plus bridge logs showing connection and sync.
+
 ## Validation Evidence
 
 Structural validation:

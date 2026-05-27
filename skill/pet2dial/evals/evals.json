@@ -10,6 +10,16 @@
     "expected_behavior": "Use pet2dial. Convert the currently selected Codex pet, rebuild and upload firmware, then run or restart the BLE bridge."
   },
   {
+    "name": "install_background_bridge",
+    "prompt": "让 Dial 以后开机和 Mac 登录后都自动同步，不要让我挂一个终端。",
+    "expected_behavior": "Use pet2dial. Treat the bridge as a macOS device service, ensure the project venv and dependencies, install the LaunchAgent with install-autostart, then use status and logs to verify service health."
+  },
+  {
+    "name": "pin_specific_pet",
+    "prompt": "不要用当前 auto 选中的宠物，把本机已有的某个指定 pet id 刷进去。",
+    "expected_behavior": "Use pet2dial with an explicit --pet <pet-id> value supplied by the user or discovered from the local Codex pets directory. Do not hard-code previous-run pet ids; verify that the local Codex pet package exists before conversion."
+  },
+  {
     "name": "near_miss_arbitrary_image",
     "prompt": "我有一张 PNG，帮我直接刷到 Dial 当宠物。",
     "expected_behavior": "Do not use pet2dial as the image-generation path. Explain that pet2dial expects an existing Codex-compatible pet package; create or install the Codex pet first."

@@ -5,6 +5,7 @@ import argparse
 import json
 import os
 import platform
+import plistlib
 import shutil
 import subprocess
 import sys
@@ -14,6 +15,13 @@ from pathlib import Path
 DEFAULT_PROJECT = Path.home() / "CodexDialPet"
 DEFAULT_CODEX_HOME = Path.home() / ".codex"
 ROWS = "0,1,2,3,4,5,6,7,8"
+LAUNCH_AGENT_LABEL = "local.codex.dial.bridge"
+PLATFORMIO_VERSION = "platformio==6.1.19"
+REQUIRED_MODULES = {
+    "bleak": "bleak",
+    "PIL": "Pillow",
+    "platformio": PLATFORMIO_VERSION,
+}
 
 
 def skill_dir() -> Path:
@@ -27,6 +35,21 @@ def template_dir() -> Path:
 def run(cmd: list[str], cwd: Path | None = None) -> None:
     print("+ " + " ".join(cmd), flush=True)
     subprocess.run(cmd, cwd=cwd, check=True)
+
+
+def run_capture(cmd: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(cmd, cwd=cwd, check=False, text=True, capture_output=True)
+
+
+def explain_failure(action: str, exc: subprocess.CalledProcessError) -> int:
+    print(f"[FAIL] {action} failed with exit code {exc.returncode}.")
+    if exc.cmd:
+        print("Command: " + " ".join(str(part) for part in exc.cmd))
+    print("Next steps:")
+    print("- Run `python3 scripts/pet2dial.py doctor` for a full environment check.")
+    print("- If this is a BLE bridge failure on macOS, run `python3 scripts/pet2dial.py logs` and check Bluetooth permission prompts.")
+    print("- If this is a firmware upload failure, confirm the Dial is connected over USB and appears as /dev/cu.usbmodem*.")
+    return exc.returncode or 1
 
 
 def status(label: str, ok: bool, detail: str) -> bool:
@@ -89,6 +112,7 @@ def doctor(args: argparse.Namespace) -> int:
     ok = True
     codex_home = args.codex_home
     pet_id = selected_pet(codex_home)
+    project = args.project
     ok &= status("macOS", platform.system() == "Darwin", platform.platform())
     ok &= status("Python", sys.version_info >= (3, 10), sys.version.split()[0])
     ok &= status("Codex home", codex_home.exists(), str(codex_home))
@@ -98,13 +122,30 @@ def doctor(args: argparse.Namespace) -> int:
         ok &= status("pet package", pet_exists(codex_home, pet_id), str(codex_home / "pets" / pet_id))
     ports = sorted(Path("/dev").glob("cu.usbmodem*"))
     status("Dial USB serial", bool(ports), ", ".join(str(Path("/dev") / item.name) for item in ports) or "plug Dial into USB for flashing")
-    project = args.project
     if project.exists():
-        status("project", True, str(project))
-        status("project venv", project_python(project).exists(), str(project_python(project)))
-        status("PlatformIO", Path(project_pio(project)).exists() if isinstance(project_pio(project), Path) else True, str(project_pio(project)))
+        ok &= status("project", project_ready(project), str(project) if project_ready(project) else f"{project} is missing template files")
+        venv_python = project_python(project)
+        ok &= status("project venv", venv_python.exists(), str(venv_python))
+        if venv_python.exists():
+            missing = missing_modules(venv_python)
+            ok &= status("bridge dependencies", not missing, "installed" if not missing else "missing " + ", ".join(missing))
+        ok &= status("PlatformIO", Path(project_pio(project)).exists() if isinstance(project_pio(project), Path) else True, str(project_pio(project)))
+        status("bridge app", bridge_app_path(project).exists(), str(bridge_app_path(project)))
+        log = bridge_log_path(project)
+        if log.exists():
+            lines = log.read_text(encoding="utf-8", errors="replace").splitlines()[-80:]
+            connected = any("Connected. Syncing Codex state." in line for line in lines)
+            sync_lines = [line for line in lines if line.startswith("Sync ")]
+            status("recent bridge connection", connected, "connected" if connected else "no recent connection in last 80 log lines")
+            status("recent bridge sync", bool(sync_lines), sync_lines[-1] if sync_lines else "no recent Sync line")
+        else:
+            status("bridge log", False, str(log))
     else:
         status("project", False, f"{project} has not been initialized")
+    agent = launch_agent_path()
+    agent_loaded = run_capture(["launchctl", "print", f"gui/{os.getuid()}/{LAUNCH_AGENT_LABEL}"]).returncode == 0
+    status("LaunchAgent installed", agent.exists(), str(agent))
+    status("LaunchAgent running", agent_loaded, LAUNCH_AGENT_LABEL if agent_loaded else "not loaded")
     return 0 if ok else 1
 
 
@@ -132,7 +173,122 @@ def setup_env(args: argparse.Namespace) -> int:
     return 0
 
 
+def project_ready(project: Path) -> bool:
+    required = [
+        project / "requirements.txt",
+        project / "codex_dial_bridge" / "cli.py",
+        project / "tools" / "convert_pet.py",
+        project / "firmware" / "platformio.ini",
+    ]
+    return all(path.exists() for path in required)
+
+
+def ensure_project(args: argparse.Namespace) -> None:
+    if project_ready(args.project):
+        return
+    print(f"[SETUP] Initializing project at {args.project}")
+    init_args = argparse.Namespace(project=args.project, force=False)
+    init_project(init_args)
+
+
+def missing_modules(python: Path) -> list[str]:
+    missing: list[str] = []
+    for module, package in REQUIRED_MODULES.items():
+        result = run_capture([str(python), "-c", f"import {module}"])
+        if result.returncode != 0:
+            missing.append(package)
+    return missing
+
+
+def ensure_env(args: argparse.Namespace, include_pio: bool = False) -> None:
+    ensure_project(args)
+    project = args.project
+    python = project_python(project)
+    if not python.exists():
+        print(f"[SETUP] Creating isolated Python environment: {project / '.venv'}")
+        run([sys.executable, "-m", "venv", str(project / ".venv")])
+    required = missing_modules(python)
+    if not include_pio:
+        required = [item for item in required if not item.startswith("platformio")]
+    if required:
+        print("[SETUP] Installing missing bridge dependencies into the project venv: " + ", ".join(required))
+        run([str(python), "-m", "pip", "install", "--upgrade", "pip"])
+        run([str(python), "-m", "pip", "install", "-r", str(project / "requirements.txt")])
+        if include_pio and any(item.startswith("platformio") for item in required):
+            run([str(python), "-m", "pip", "install", PLATFORMIO_VERSION])
+
+
+def bridge_app_path(project: Path) -> Path:
+    return project / "macos" / "CodexDialBridge.app"
+
+
+def bridge_log_path(project: Path) -> Path:
+    return project / "logs" / "bridge.log"
+
+
+def launch_agent_path() -> Path:
+    return Path.home() / "Library" / "LaunchAgents" / f"{LAUNCH_AGENT_LABEL}.plist"
+
+
+def resolve_bridge_pet(args: argparse.Namespace) -> str:
+    return args.pet or "auto"
+
+
+def create_bridge_app(args: argparse.Namespace) -> Path:
+    project = args.project
+    app = bridge_app_path(project)
+    macos = app / "Contents" / "MacOS"
+    macos.mkdir(parents=True, exist_ok=True)
+    (app / "Contents" / "Resources").mkdir(parents=True, exist_ok=True)
+    (project / "logs").mkdir(exist_ok=True)
+
+    info = {
+        "CFBundleDevelopmentRegion": "en",
+        "CFBundleDisplayName": "CodexDialBridge",
+        "CFBundleExecutable": "CodexDialBridge",
+        "CFBundleIdentifier": LAUNCH_AGENT_LABEL,
+        "CFBundleInfoDictionaryVersion": "6.0",
+        "CFBundleName": "CodexDialBridge",
+        "CFBundlePackageType": "APPL",
+        "CFBundleShortVersionString": "1.0",
+        "CFBundleVersion": "1",
+        "LSMinimumSystemVersion": "13.0",
+        "NSBluetoothAlwaysUsageDescription": "CodexDialBridge uses Bluetooth to sync the selected Codex pet and task state to the M5Stack Dial.",
+    }
+    with (app / "Contents" / "Info.plist").open("wb") as handle:
+        plistlib.dump(info, handle)
+
+    executable = macos / "CodexDialBridge"
+    script = f"""#!/bin/zsh
+set -u
+
+PROJECT={str(project)!r}
+LOG_DIR="$PROJECT/logs"
+LOG_FILE="$LOG_DIR/bridge.log"
+
+mkdir -p "$LOG_DIR"
+cd "$PROJECT" || exit 1
+
+{{
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting CodexDialBridge"
+  exec "$PROJECT/.venv/bin/python" -m codex_dial_bridge.cli run \\
+    --codex-home {str(args.codex_home)!r} \\
+    --pet {resolve_bridge_pet(args)!r} \\
+    --device-name {args.device_name!r} \\
+    --interval {str(args.interval)!r}
+}} >> "$LOG_FILE" 2>&1
+"""
+    executable.write_text(script, encoding="utf-8")
+    executable.chmod(0o755)
+
+    codesign = shutil.which("codesign")
+    if codesign:
+        subprocess.run([codesign, "--force", "--deep", "--sign", "-", str(app)], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return app
+
+
 def convert(args: argparse.Namespace) -> int:
+    ensure_project(args)
     project = args.project
     pet_id = args.pet or selected_pet(args.codex_home)
     if not pet_id:
@@ -162,6 +318,7 @@ def convert(args: argparse.Namespace) -> int:
 
 
 def build(args: argparse.Namespace) -> int:
+    ensure_env(args, include_pio=True)
     pio = str(project_pio(args.project))
     run([pio, "run", "-d", str(args.project / "firmware")])
     return 0
@@ -175,6 +332,7 @@ def first_dial_port() -> str:
 
 
 def upload(args: argparse.Namespace) -> int:
+    ensure_env(args, include_pio=True)
     pio = str(project_pio(args.project))
     port = args.port or first_dial_port()
     run([pio, "run", "-d", str(args.project / "firmware"), "-t", "upload", "--upload-port", port])
@@ -182,21 +340,134 @@ def upload(args: argparse.Namespace) -> int:
 
 
 def run_bridge(args: argparse.Namespace) -> int:
-    python = str(project_python(args.project) if project_python(args.project).exists() else Path(sys.executable))
+    try:
+        ensure_project(args)
+        if args.global_python:
+            python = Path(sys.executable)
+            run(
+                [
+                    str(python),
+                    "-m",
+                    "codex_dial_bridge.cli",
+                    "run",
+                    "--codex-home",
+                    str(args.codex_home),
+                    "--pet",
+                    resolve_bridge_pet(args),
+                    "--device-name",
+                    args.device_name,
+                    "--interval",
+                    str(args.interval),
+                ],
+                cwd=args.project,
+            )
+        else:
+            ensure_env(args)
+            app = create_bridge_app(args)
+            print(f"[OK] Starting bridge app: {app}")
+            print(f"[OK] Logs: {bridge_log_path(args.project)}")
+            run(["/usr/bin/open", "-W", "-g", str(app)])
+    except subprocess.CalledProcessError as exc:
+        return explain_failure("BLE bridge", exc)
+    return 0
+
+
+def install_autostart(args: argparse.Namespace) -> int:
+    ensure_env(args)
+    app = create_bridge_app(args)
+    plist_path = launch_agent_path()
+    plist_path.parent.mkdir(parents=True, exist_ok=True)
+    plist = {
+        "Label": LAUNCH_AGENT_LABEL,
+        "ProgramArguments": ["/usr/bin/open", "-W", "-g", str(app)],
+        "RunAtLoad": True,
+        "KeepAlive": True,
+        "StandardOutPath": str(args.project / "logs" / "launchagent.out.log"),
+        "StandardErrorPath": str(args.project / "logs" / "launchagent.err.log"),
+        "WorkingDirectory": str(args.project),
+    }
+    with plist_path.open("wb") as handle:
+        plistlib.dump(plist, handle)
+    subprocess.run(["launchctl", "bootout", f"gui/{os.getuid()}", str(plist_path)], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    result = subprocess.run(["launchctl", "bootstrap", f"gui/{os.getuid()}", str(plist_path)], check=False)
+    if result.returncode != 0:
+        print(f"[FAIL] Could not install LaunchAgent: {plist_path}")
+        print("Next step: run `launchctl print gui/$UID/local.codex.dial.bridge` for macOS launchd details.")
+        return result.returncode
+    subprocess.run(["launchctl", "kickstart", "-k", f"gui/{os.getuid()}/{LAUNCH_AGENT_LABEL}"], check=False)
+    print(f"[OK] Installed login autostart: {plist_path}")
+    print(f"[OK] Bridge app: {app}")
+    return 0
+
+
+def uninstall_autostart(args: argparse.Namespace) -> int:
+    plist_path = launch_agent_path()
+    subprocess.run(["launchctl", "bootout", f"gui/{os.getuid()}", str(plist_path)], check=False)
+    if plist_path.exists():
+        plist_path.unlink()
+    print(f"[OK] Removed login autostart: {plist_path}")
+    return 0
+
+
+def service_status(args: argparse.Namespace) -> int:
+    print(f"Project: {args.project}")
+    print(f"Bridge app: {bridge_app_path(args.project)}")
+    print(f"LaunchAgent: {launch_agent_path()}")
+    result = run_capture(["launchctl", "print", f"gui/{os.getuid()}/{LAUNCH_AGENT_LABEL}"])
+    if result.returncode == 0:
+        print("[OK] LaunchAgent loaded")
+        for line in result.stdout.splitlines():
+            if any(key in line for key in ("state =", "pid =", "last exit code =", "runs =")):
+                print(line.strip())
+    else:
+        print("[NEED] LaunchAgent not loaded")
+    log = bridge_log_path(args.project)
+    if log.exists():
+        lines = log.read_text(encoding="utf-8", errors="replace").splitlines()[-40:]
+        connected = any("Connected. Syncing Codex state." in line for line in lines)
+        sync = [line for line in lines if line.startswith("Sync ")]
+        status("recent BLE connection", connected, "connected" if connected else "no recent connection in last 40 log lines")
+        if sync:
+            print("Last sync: " + sync[-1])
+    else:
+        status("bridge log", False, str(log))
+    return 0
+
+
+def restart_bridge(args: argparse.Namespace) -> int:
+    if not launch_agent_path().exists():
+        print("[NEED] LaunchAgent is not installed. Run `python3 scripts/pet2dial.py install-autostart` first.")
+        return 1
+    result = subprocess.run(["launchctl", "kickstart", "-k", f"gui/{os.getuid()}/{LAUNCH_AGENT_LABEL}"], check=False)
+    if result.returncode == 0:
+        print("[OK] Restarted CodexDial bridge service")
+    return result.returncode
+
+
+def show_logs(args: argparse.Namespace) -> int:
+    log = bridge_log_path(args.project)
+    if not log.exists():
+        print(f"[NEED] No bridge log found: {log}")
+        print("Next step: run `python3 scripts/pet2dial.py run-bridge` or `python3 scripts/pet2dial.py install-autostart`.")
+        return 1
+    lines = log.read_text(encoding="utf-8", errors="replace").splitlines()
+    for line in lines[-args.lines :]:
+        print(line)
+    return 0
+
+
+def clear_review_backlog(args: argparse.Namespace) -> int:
+    ensure_env(args)
     run(
         [
-            python,
+            str(project_python(args.project)),
             "-m",
             "codex_dial_bridge.cli",
-            "run",
+            "clear-review-backlog",
             "--codex-home",
             str(args.codex_home),
             "--pet",
             args.pet or "auto",
-            "--device-name",
-            args.device_name,
-            "--interval",
-            str(args.interval),
         ],
         cwd=args.project,
     )
@@ -253,6 +524,22 @@ def build_parser() -> argparse.ArgumentParser:
     bridge.add_argument("--pet")
     bridge.add_argument("--device-name", default="CodexDial")
     bridge.add_argument("--interval", type=float, default=2.0)
+    bridge.add_argument("--global-python", action="store_true")
+
+    autostart = sub.add_parser("install-autostart")
+    autostart.add_argument("--pet")
+    autostart.add_argument("--device-name", default="CodexDial")
+    autostart.add_argument("--interval", type=float, default=2.0)
+
+    sub.add_parser("uninstall-autostart")
+    sub.add_parser("status")
+    sub.add_parser("restart-bridge")
+
+    logs = sub.add_parser("logs")
+    logs.add_argument("--lines", type=int, default=80)
+
+    clear_reviews = sub.add_parser("clear-review-backlog")
+    clear_reviews.add_argument("--pet")
 
     verify_cmd = sub.add_parser("verify")
     verify_cmd.add_argument("--pet")
@@ -282,6 +569,18 @@ def main(argv: list[str] | None = None) -> int:
         return upload(args)
     if args.command == "run-bridge":
         return run_bridge(args)
+    if args.command == "install-autostart":
+        return install_autostart(args)
+    if args.command == "uninstall-autostart":
+        return uninstall_autostart(args)
+    if args.command == "status":
+        return service_status(args)
+    if args.command == "restart-bridge":
+        return restart_bridge(args)
+    if args.command == "logs":
+        return show_logs(args)
+    if args.command == "clear-review-backlog":
+        return clear_review_backlog(args)
     if args.command == "verify":
         return verify(args)
     if args.command == "success-path":

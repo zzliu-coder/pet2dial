@@ -74,9 +74,6 @@ static const uint16_t *currentPetFrames() {
 static int currentPetState() {
   if (!appState.connected) return PET_ROW_WAITING;
   if (strcmp(appState.mode, "running") == 0) return PET_ROW_RUNNING;
-  if (strcmp(appState.mode, "working") == 0) return PET_ROW_RUNNING;
-  if (strcmp(appState.mode, "done") == 0) return PET_ROW_REVIEW;
-  if (strcmp(appState.mode, "aborted") == 0) return PET_ROW_FAILED;
   if (strcmp(appState.mode, "review") == 0) return PET_ROW_REVIEW;
   if (strcmp(appState.mode, "waiting") == 0) return PET_ROW_WAITING;
   return PET_ROW_IDLE;
@@ -88,16 +85,12 @@ static uint16_t rgb(uint8_t r, uint8_t g, uint8_t b) {
 
 static uint16_t stateColor(const char *state) {
   if (strcmp(state, "review") == 0) return rgb(66, 198, 142);
-  if (strcmp(state, "done") == 0) return rgb(66, 198, 142);
-  if (strcmp(state, "aborted") == 0) return rgb(219, 103, 90);
   if (strcmp(state, "running") == 0) return rgb(240, 189, 75);
   return rgb(136, 160, 181);
 }
 
 static const char *stateShortLabel(const char *state) {
   if (strcmp(state, "review") == 0) return "REVIEW";
-  if (strcmp(state, "done") == 0) return "REVIEW";
-  if (strcmp(state, "aborted") == 0) return "!";
   if (strcmp(state, "running") == 0) return "RUN";
   return "-";
 }

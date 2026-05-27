@@ -17,6 +17,11 @@ Trigger: "My Dial restarted; sync it again."
 Steps: Run bridge. If firmware is already flashed, no USB upload is required.
 Result: Dial reconnects over BLE and shows current Codex state.
 
+Use Case: Daily background sync
+Trigger: "Keep my Dial synced after I log in."
+Steps: Install the LaunchAgent. The agent launches the macOS bridge app, which starts the project venv bridge and writes logs.
+Result: The user does not need a terminal window; `status`, `restart-bridge`, and `logs` expose health.
+
 ## Fixed Success Path
 
 The visual source is the Codex custom pet package:
@@ -74,6 +79,8 @@ Bridge:
 - Bridge reads Codex local files from `~/.codex`.
 - Bridge writes only its own generated project state under `<project>/state`.
 - Bridge opens Codex conversations with `codex://threads/<thread_id>`.
+- Daily bridge mode uses an isolated project venv, a generated `CodexDialBridge.app` with Bluetooth usage description, and an optional user LaunchAgent.
+- Advanced users may run with global Python, but the open-source success path should prefer the isolated venv.
 
 ## Task State Contract
 
@@ -94,6 +101,62 @@ Review visibility rule:
 - The card is marked seen only after the Dial sends `LEAVE`.
 - `LEAVE` is sent when the user rotates away from that card or leaves card view.
 
+## Codex Data Contract
+
+Pet source:
+
+- `~/.codex/pets/<pet-id>/pet.json`
+- `~/.codex/pets/<pet-id>/spritesheet.webp`
+- optional UI-selected custom pet id from `~/.codex/.codex-global-state.json`
+
+Pet atlas rows mirror the Codex pet package shape:
+
+- `idle`
+- `running-right`
+- `running-left`
+- `waving`
+- `jumping`
+- `failed`
+- `waiting`
+- `running`
+- `review`
+
+Task source:
+
+- local Codex rollout JSONL files under `~/.codex/sessions`
+- `session_meta.payload.cwd`
+- `response_item.payload` user messages
+- `event_msg.payload.type`
+- `event_msg.payload.message`
+- `event_msg.payload.turn_id`
+
+Bridge wire schema:
+
+```json
+{
+  "v": 1,
+  "pet": "<pet-id>",
+  "mode": "idle|running|review",
+  "now": 0,
+  "bubbles": [
+    {
+      "thread_id": "<codex-thread-id>",
+      "title": "<compact-user-visible-title>",
+      "state": "running|review",
+      "updated_at": 0,
+      "cwd": "<session-cwd>",
+      "turn_id": "<codex-turn-id>"
+    }
+  ]
+}
+```
+
+Allowed local bridge state:
+
+- `<project>/state/seen_done_threads.json`, which stores review thread ids already seen through this bridge.
+
+Keep this contract narrow. Do not add independent pet catalogs, fake default pet ids, multi-pet firmware bundles, or task states that the bridge does not actually send.
+
 ## Environment Contract
 
 The successful Mac environment has:
@@ -105,8 +168,58 @@ The successful Mac environment has:
 - Python packages from `requirements.txt`: `bleak`, `Pillow`
 - a visible Dial serial device during upload, usually `/dev/cu.usbmodem*`
 - Bluetooth permission for the process running the bridge
+- a generated app wrapper for macOS BLE permission prompts
+- optional LaunchAgent at `~/Library/LaunchAgents/local.codex.dial.bridge.plist`
 
 The skill should install project-local Python dependencies and PlatformIO into the generated project venv. It should not require global Python package installation.
+
+## Service Health Contract
+
+`run-bridge` is a user command, not a developer-only command. It should:
+
+- initialize the generated project if it is missing
+- create the project venv if it is missing
+- install missing bridge dependencies into that venv
+- create the macOS bridge app wrapper
+- start the bridge
+- explain the next action when it fails
+
+The service commands are:
+
+```text
+install-autostart
+uninstall-autostart
+status
+restart-bridge
+logs
+```
+
+`doctor` should report:
+
+- Codex home and session availability
+- selected or newest local custom pet
+- pet package presence
+- Dial USB serial visibility
+- generated project and venv state
+- bridge dependency state
+- PlatformIO availability
+- bridge app presence
+- LaunchAgent installation and loaded status
+- recent bridge connection and sync evidence when logs exist
+
+If the bridge cannot find `CodexDial`, prefer a concrete diagnosis:
+
+- Dial firmware may still be in download mode
+- Dial may need a physical reset
+- BLE permission may be missing
+- firmware may not be advertising the expected service/name
+
+Review backlog behavior:
+
+- `review` is derived from `event_msg.payload.type == "task_complete"`.
+- The bridge does not use an independent `done` state in its public wire schema.
+- On first bridge state initialization, existing historical `task_complete` threads are marked seen so the Dial does not show old Codex completions as current review cards.
+- `clear-review-backlog` marks all currently completed rollout threads as seen in the bridge-local state file without modifying Codex session files.
 
 ## Open Source Boundary
 
@@ -120,6 +233,8 @@ The skill package must not include:
 - `state/seen_done_threads.json`
 - extracted Codex app bundles
 - private rollout files
+- user-specific generated LaunchAgent plists
+- user-specific bridge app bundles
 
 The skill may include:
 

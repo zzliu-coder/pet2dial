@@ -63,6 +63,16 @@ For a first install with the Dial already connected over USB:
 python3 skill/pet2dial/scripts/pet2dial.py success-path --upload
 ```
 
+For daily use, install the Mac bridge as a login service:
+
+```bash
+python3 skill/pet2dial/scripts/pet2dial.py install-autostart
+python3 skill/pet2dial/scripts/pet2dial.py status
+python3 skill/pet2dial/scripts/pet2dial.py logs
+```
+
+`run-bridge` and `install-autostart` self-heal the generated project, virtual environment, and missing Python dependencies. On macOS the bridge is launched through a generated `CodexDialBridge.app` wrapper so Bluetooth permissions are handled by the system privacy model.
+
 By default the generated working project is created at:
 
 ```text
@@ -90,6 +100,12 @@ The skill checks the environment, creates a clean project, installs dependencies
 The idle view keeps the pet visible. Running and review counters sit above it.
 
 Rotating the Dial opens a task card view. The pet shrinks down and the card shows the selected task. Tapping opens the Codex conversation. A review card remains visible after the tap and is marked seen only after the user rotates away or returns to the pet view.
+
+Review cards are derived from Codex session events where `event_msg.payload.type == "task_complete"`. Existing historical completions are baselined as already seen so the Dial starts with current work instead of an old completion backlog. To clear the current review backlog manually:
+
+```bash
+python3 skill/pet2dial/scripts/pet2dial.py clear-review-backlog
+```
 
 This behavior is implemented with a small BLE event protocol:
 

@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from .protocol import Bubble, DialState, MAX_BUBBLES
-from .seen_state import load_seen, save_seen
+from .seen_state import DEFAULT_SEEN_PATH, load_seen, save_seen
 
 TITLE_MAX = 34
 DEFAULT_CODEX_HOME = Path.home() / ".codex"
@@ -62,7 +62,7 @@ def newest_pet_id(codex_home: Path | None = None) -> str:
             if spritesheet.exists():
                 candidates.append((max(manifest.stat().st_mtime, spritesheet.stat().st_mtime), manifest.parent.name))
     if not candidates:
-        return "proofwarden"
+        return ""
     return sorted(candidates, reverse=True)[0][1]
 
 
@@ -102,11 +102,10 @@ class SessionSummary:
     turn_id: str = ""
 
     def to_bubble(self) -> Bubble:
-        display_state = "review" if self.state == "done" else self.state
         return Bubble(
             thread_id=self.thread_id,
             title=self.title,
-            state=display_state,
+            state=self.state,
             updated_at=self.updated_at,
             cwd=self.cwd,
             turn_id=self.turn_id,
@@ -164,13 +163,13 @@ def summarize_session(path: Path) -> SessionSummary | None:
                             state = "running"
                             turn_id = ""
                     elif event_type == "task_complete":
-                        state = "done"
+                        state = "review"
                         turn_id = payload.get("turn_id", turn_id)
                     elif event_type == "turn_aborted":
                         state = "aborted"
                         turn_id = payload.get("turn_id", turn_id)
                     elif event_type in {"agent_message_delta", "exec_command_begin", "token_count"}:
-                        if state not in {"done", "aborted"}:
+                        if state not in {"review", "aborted"}:
                             state = "running"
     except OSError:
         return None
@@ -186,6 +185,9 @@ class CodexSource:
         self.pet = pet
         self.sessions_dir = self.codex_home / "sessions"
         self.seen_path = seen_path
+
+    def resolved_seen_path(self) -> Path:
+        return self.seen_path or DEFAULT_SEEN_PATH
 
     def current_pet(self) -> str:
         if self.pet == "auto":
@@ -203,34 +205,58 @@ class CodexSource:
 
     def snapshot(self, limit: int = MAX_BUBBLES) -> DialState:
         summaries: list[SessionSummary] = []
-        seen_done_threads = load_seen(self.seen_path) if self.seen_path else load_seen()
+        seen_path = self.resolved_seen_path()
+        seen_done_threads = load_seen(seen_path)
         cleaned_seen = False
+        initialized_seen = seen_path.exists()
         for path in self.session_paths()[: max(48, limit * 6)]:
             summary = summarize_session(path)
             if summary:
                 if summary.state == "running" and summary.thread_id in seen_done_threads:
                     seen_done_threads.remove(summary.thread_id)
                     cleaned_seen = True
-                if summary.state not in {"running", "done"}:
-                    continue
-                if summary.state == "done" and summary.thread_id in seen_done_threads:
+                if summary.state not in {"running", "review"}:
                     continue
                 summaries.append(summary)
-            if len(summaries) >= limit:
+
+        if not initialized_seen:
+            historical_reviews = {item.thread_id for item in summaries if item.state == "review"}
+            save_seen(historical_reviews, seen_path)
+            seen_done_threads = historical_reviews
+
+        filtered: list[SessionSummary] = []
+        for summary in summaries:
+            if summary.state == "review" and summary.thread_id in seen_done_threads:
+                continue
+            filtered.append(summary)
+            if len(filtered) >= limit:
                 break
 
         if cleaned_seen:
-            save_seen(seen_done_threads, self.seen_path) if self.seen_path else save_seen(seen_done_threads)
+            save_seen(seen_done_threads, seen_path)
 
         mode = "idle"
-        if any(item.state == "running" for item in summaries):
+        if any(item.state == "running" for item in filtered):
             mode = "running"
-        elif any(item.state == "done" for item in summaries):
+        elif any(item.state == "review" for item in filtered):
             mode = "review"
 
         return DialState(
             pet=self.current_pet(),
             mode=mode,
             now=time.time(),
-            bubbles=[item.to_bubble() for item in summaries[:limit]],
+            bubbles=[item.to_bubble() for item in filtered[:limit]],
         )
+
+    def mark_current_reviews_seen(self) -> int:
+        seen_path = self.resolved_seen_path()
+        seen_done_threads = load_seen(seen_path)
+        before = len(seen_done_threads)
+        for path in self.session_paths():
+            summary = summarize_session(path)
+            if not summary:
+                continue
+            if summary.state == "review":
+                seen_done_threads.add(summary.thread_id)
+        save_seen(seen_done_threads, seen_path)
+        return len(seen_done_threads) - before

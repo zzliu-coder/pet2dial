@@ -9,7 +9,9 @@ description: Mirror the currently selected Codex custom pet and Codex running/re
 
 Put the Codex desktop pet onto an M5Stack Dial using the proven path from this run: one selected Codex custom pet, converted from the official Codex pet atlas into a 96x96 RGB565 firmware resource, flashed into M5Stack Dial firmware, then synchronized from macOS to Dial over BLE.
 
-This skill is a success-path workflow. Keep the main path direct: check environment, create the project, convert the pet, build, upload, run bridge, verify.
+This skill is a success-path workflow. Keep the main path direct: check environment, create the project, convert the pet, build, upload, install or restart the bridge service, verify.
+
+Treat the BLE bridge as a user-facing device service. The user should not need to understand the generated project directory, virtual environment, Python dependencies, or a terminal that must stay open.
 
 ## Success Contract
 
@@ -33,6 +35,13 @@ Use the defaults unless the user explicitly asks otherwise:
 - rows: `0,1,2,3,4,5,6,7,8`
 - firmware target: M5Stack Dial / M5StampS3
 - BLE name: `CodexDial`
+- bridge runtime: isolated project venv plus macOS app wrapper and optional LaunchAgent
+
+Pet selection rules:
+
+- `auto` means the currently selected Codex custom pet when Codex exposes one, with newest local custom pet as fallback.
+- `--pet <pet-id>` pins a specific local pet package such as `~/.codex/pets/<pet-id>`.
+- Do not hard-code pet ids, user paths, or previous-run examples into open-source defaults.
 
 ## Required User Conditions
 
@@ -94,7 +103,13 @@ python3 scripts/pet2dial.py upload
 python3 scripts/pet2dial.py run-bridge
 ```
 
-9. Verify the result:
+9. For daily use, install the background service:
+
+```bash
+python3 scripts/pet2dial.py install-autostart
+```
+
+10. Verify the result:
 
 ```bash
 python3 scripts/pet2dial.py verify
@@ -106,6 +121,16 @@ For a first successful install where the Dial is already connected, the orchestr
 python3 scripts/pet2dial.py success-path --upload
 ```
 
+For service operations:
+
+```bash
+python3 scripts/pet2dial.py status
+python3 scripts/pet2dial.py logs
+python3 scripts/pet2dial.py restart-bridge
+python3 scripts/pet2dial.py clear-review-backlog
+python3 scripts/pet2dial.py uninstall-autostart
+```
+
 ## Execution Rules
 
 - Do not copy user-specific pet images, logs, seen-state files, virtual environments, or extracted Codex app bundles into the skill.
@@ -115,6 +140,10 @@ python3 scripts/pet2dial.py success-path --upload
 - Keep the firmware resource as one pet by default. Multiple pets consume flash quickly and are outside the success path.
 - If the user already has a project directory, preserve user edits unless they approve `--force`.
 - After every firmware or bridge edit, run the Python tests and PlatformIO build before upload.
+- `run-bridge` must self-heal the generated project, venv, and bridge dependencies before starting.
+- `run-bridge` should print next actions for ordinary users when it fails, not raw Python tracebacks as the primary output.
+- On macOS, prefer the generated `CodexDialBridge.app` wrapper for BLE access because Python without a Bluetooth usage description can be killed by TCC.
+- Use `--global-python` only as an advanced escape hatch for users who understand their Python environment.
 
 ## State Model
 
@@ -129,10 +158,11 @@ Task card state:
 
 - Bridge reads local Codex rollout JSONL files.
 - `user_message` or active output makes a thread `running`.
-- `task_complete` makes a thread `review`.
+- `event_msg.payload.type == "task_complete"` makes a thread `review`.
 - `turn_aborted` is filtered out of Dial task cards.
 - `CLICK|thread_id` opens the Codex thread.
 - `LEAVE|thread_id` marks an opened review card as seen.
+- Existing historical `task_complete` threads should be baselined as seen so the Dial starts with the current Codex experience, not an old completion backlog.
 
 ## Subagents
 
@@ -154,3 +184,8 @@ python3 scripts/pet2dial.py --project ~/CodexDialPet verify
 ```
 
 Firmware proof is a successful PlatformIO build and upload. Runtime proof is a bridge log showing `Connected. Syncing Codex state.` followed by `Sync pet=<pet-id> mode=<running|review|idle> bubbles=...`.
+
+Service proof is:
+
+- `python3 scripts/pet2dial.py status` reports the LaunchAgent as loaded.
+- `python3 scripts/pet2dial.py logs` shows recent bridge scanning, connection, or sync lines.

@@ -26,7 +26,7 @@ class Bubble:
 @dataclass(slots=True)
 class DialState:
     v: int = 1
-    pet: str = "proofwarden"
+    pet: str = ""
     mode: str = "idle"
     now: float = 0.0
     bubbles: list[Bubble] = field(default_factory=list)

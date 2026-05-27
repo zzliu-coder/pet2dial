@@ -78,7 +78,7 @@ class DialBleBridge:
         kind, value = parse_event(bytes(data))
         if kind == "CLICK" and value:
             print(f"Opening Codex thread {value}", flush=True)
-            if self._thread_states.get(value) in {"done", "review"}:
+            if self._thread_states.get(value) == "review":
                 self._pending_seen.add(value)
             open_thread(value)
         elif kind == "LEAVE" and value:
