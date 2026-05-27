@@ -82,6 +82,8 @@ Observed Symptoms:
 
 - `run-bridge` exposed project paths, venv state, missing dependencies, and raw Python/macOS failures to the user.
 - macOS killed raw Python BLE scans when the process lacked `NSBluetoothAlwaysUsageDescription`.
+- The macOS bridge wrapper initially appeared in the Dock because it lacked `LSUIElement=true`.
+- Tap-to-open failures were hard to diagnose because `open_thread()` did not log the result of `/usr/bin/open codex://...`.
 - A previous selected pet id could leak into `auto` snapshots while a user wanted a different installed pet.
 - Running the bridge required a foreground terminal and had no standard status, restart, or log surface.
 
@@ -100,6 +102,7 @@ Positive Success Path:
 - `install-autostart` installs a LaunchAgent so login starts the bridge automatically.
 - `status`, `logs`, and `restart-bridge` provide a user-visible service surface.
 - `--pet <pet-id>` pins a specific local pet while `auto` remains the portable default.
+- The generated wrapper is a background agent app and thread-opening logs success or failure.
 
 Structural Levers:
 

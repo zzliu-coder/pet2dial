@@ -79,7 +79,7 @@ Bridge:
 - Bridge reads Codex local files from `~/.codex`.
 - Bridge writes only its own generated project state under `<project>/state`.
 - Bridge opens Codex conversations with `codex://threads/<thread_id>`.
-- Daily bridge mode uses an isolated project venv, a generated `CodexDialBridge.app` with Bluetooth usage description, and an optional user LaunchAgent.
+- Daily bridge mode uses an isolated project venv, a generated background `CodexDialBridge.app` with Bluetooth usage description, and an optional user LaunchAgent.
 - Advanced users may run with global Python, but the open-source success path should prefer the isolated venv.
 
 ## Task State Contract
@@ -220,6 +220,12 @@ Review backlog behavior:
 - The bridge does not use an independent `done` state in its public wire schema.
 - On first bridge state initialization, existing historical `task_complete` threads are marked seen so the Dial does not show old Codex completions as current review cards.
 - `clear-review-backlog` marks all currently completed rollout threads as seen in the bridge-local state file without modifying Codex session files.
+
+macOS bridge wrapper behavior:
+
+- The generated bridge app must include `NSBluetoothAlwaysUsageDescription` so CoreBluetooth access is authorized through macOS privacy controls.
+- The generated bridge app must include `LSUIElement = true` because it is a background device service, not a foreground Dock app.
+- Thread-opening must log the attempted `codex://threads/<thread_id>` URL result so click failures can be traced to Dial events, BLE delivery, or macOS URL handling.
 
 ## Open Source Boundary
 

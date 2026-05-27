@@ -253,6 +253,7 @@ def create_bridge_app(args: argparse.Namespace) -> Path:
         "CFBundleShortVersionString": "1.0",
         "CFBundleVersion": "1",
         "LSMinimumSystemVersion": "13.0",
+        "LSUIElement": True,
         "NSBluetoothAlwaysUsageDescription": "CodexDialBridge uses Bluetooth to sync the selected Codex pet and task state to the M5Stack Dial.",
     }
     with (app / "Contents" / "Info.plist").open("wb") as handle:

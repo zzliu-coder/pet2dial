@@ -71,7 +71,7 @@ python3 skill/pet2dial/scripts/pet2dial.py status
 python3 skill/pet2dial/scripts/pet2dial.py logs
 ```
 
-`run-bridge` and `install-autostart` self-heal the generated project, virtual environment, and missing Python dependencies. On macOS the bridge is launched through a generated `CodexDialBridge.app` wrapper so Bluetooth permissions are handled by the system privacy model.
+`run-bridge` and `install-autostart` self-heal the generated project, virtual environment, and missing Python dependencies. On macOS the bridge is launched through a generated `CodexDialBridge.app` wrapper so Bluetooth permissions are handled by the system privacy model. The wrapper is generated as an agent app, so it runs in the background without a Dock icon.
 
 By default the generated working project is created at:
 
@@ -113,6 +113,8 @@ This behavior is implemented with a small BLE event protocol:
 CLICK|<thread_id>  opens the Codex conversation
 LEAVE|<thread_id>  marks an opened review card as seen
 ```
+
+Bridge logs record both the incoming click and the result of opening the Codex URL. This makes the tap-to-open path diagnosable across the hardware, BLE bridge, and macOS URL handler boundary.
 
 ## Codex Pet Conversion
 
