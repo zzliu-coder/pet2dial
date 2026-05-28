@@ -19,7 +19,8 @@ class DialBleBridge:
         self.chunk_size = chunk_size
         self._seq = itertools.count(1)
         self._thread_states: dict[str, str] = {}
-        self._pending_seen: set[str] = set()
+        self._thread_turns: dict[str, str] = {}
+        self._pending_seen: dict[str, str] = {}
 
     async def _load_bleak(self):
         try:
@@ -57,7 +58,9 @@ class DialBleBridge:
             while True:
                 state = state_provider()
                 self._thread_states = {item.thread_id: item.state for item in state.bubbles if item.thread_id}
-                summary = f"pet={state.pet} mode={state.mode} bubbles=" + ",".join(item.state for item in state.bubbles[:8])
+                self._thread_turns = {item.thread_id: item.turn_id for item in state.bubbles if item.thread_id}
+                counts = ",".join(f"{key}={state.counts.get(key, 0)}" for key in ("waiting", "failed", "review", "running"))
+                summary = f"pet={state.pet} mode={state.mode} counts={counts} bubbles=" + ",".join(item.state for item in state.bubbles[:8])
                 if summary != last_summary:
                     print(f"Sync {summary}", flush=True)
                     last_summary = summary
@@ -78,13 +81,13 @@ class DialBleBridge:
         kind, value = parse_event(bytes(data))
         if kind == "CLICK" and value:
             print(f"Opening Codex thread {value}", flush=True)
-            if self._thread_states.get(value) in {"done", "review"}:
-                self._pending_seen.add(value)
+            if self._thread_states.get(value) == "review":
+                self._pending_seen[value] = self._thread_turns.get(value, "")
             open_thread(value)
         elif kind == "LEAVE" and value:
-            if value in self._pending_seen:
-                self._pending_seen.remove(value)
+            turn_id = self._pending_seen.pop(value, None)
+            if turn_id is not None:
                 print(f"Marking reviewed Codex thread {value}", flush=True)
-                mark_seen(value)
+                mark_seen(value, turn_id)
         else:
             print(f"Dial event: {kind} {value}".strip(), flush=True)

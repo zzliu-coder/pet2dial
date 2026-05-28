@@ -98,13 +98,6 @@ def load_pet_frames(pet_name: str, size: int, frames: int, rows: tuple[int, ...]
     return selected
 
 
-def discover_pets(codex_home: Path) -> list[str]:
-    pets_dir = codex_home / "pets"
-    if not pets_dir.exists():
-        return []
-    return sorted(folder.name for folder in pets_dir.iterdir() if (folder / "pet.json").exists() and (folder / "spritesheet.webp").exists())
-
-
 def row_slot(rows: tuple[int, ...], source_row: int) -> int:
     try:
         return rows.index(source_row)
@@ -113,10 +106,7 @@ def row_slot(rows: tuple[int, ...], source_row: int) -> int:
 
 
 def convert(pet_name: str, out: Path, size: int, frames: int, rows: tuple[int, ...], codex_home: Path) -> None:
-    pet_names = discover_pets(codex_home) if pet_name == "all" else [pet_name]
-    if not pet_names:
-        raise SystemExit(f"No pets found under {codex_home / 'pets'}")
-    loaded = [(name, load_pet_frames(name, size, frames, rows, codex_home)) for name in pet_names]
+    loaded = [(pet_name, load_pet_frames(pet_name, size, frames, rows, codex_home))]
 
     out.parent.mkdir(parents=True, exist_ok=True)
     with out.open("w", encoding="utf-8") as handle:
@@ -153,7 +143,7 @@ def convert(pet_name: str, out: Path, size: int, frames: int, rows: tuple[int, .
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Convert a Codex pet spritesheet into a firmware RGB565 header.")
-    parser.add_argument("pet_name", help="Pet id, or 'all' to include every installed Codex pet.")
+    parser.add_argument("pet_name", help="Codex pet id under <codex-home>/pets.")
     parser.add_argument("--out", type=Path, default=Path("firmware/include/pet_frames.h"))
     parser.add_argument("--size", type=int, default=96)
     parser.add_argument("--frames", type=int, default=8)

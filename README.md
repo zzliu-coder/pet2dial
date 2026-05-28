@@ -1,51 +1,61 @@
 # Pet2Dial
 
-Turn the Codex desktop pet into a tiny external hardware companion and rotary task remote on an M5Stack Dial.
+把 Codex Desktop 的宠物搬到 M5Stack Dial 上，让它变成一个桌面外置宠物和旋钮式任务遥控器。
 
-Pet2Dial is a Codex skill and hardware bridge that takes the currently selected Codex custom pet, converts its official animated pet atlas into M5Stack Dial firmware assets, flashes the Dial, and keeps it synchronized over Bluetooth Low Energy. The goal is to preserve the feel of the official Codex pet experience while moving it out of the Mac display and onto the desk. The Dial becomes both a small physical pet companion and a handheld-style remote: rotate to browse running or review tasks, tap to open the matching Codex conversation.
+Pet2Dial 是一个 Codex skill、M5Stack Dial 固件和 macOS BLE bridge 组成的开源项目。它读取你在 Codex 中当前选中的 custom pet，把官方 `spritesheet.webp` 动画图集转换成 Dial 固件资源，再通过 Bluetooth Low Energy 持续同步 Codex 的宠物状态、任务卡片和状态计数。
 
 ![Pet2Dial running on M5Stack Dial](docs/images/pet2dial-on-m5stack-dial.jpg)
 
-## Why This Exists
+## 核心亮点
 
-Codex already has a delightful pet mode inside the desktop app. Pet2Dial asks a simple question: what if that pet could leave the screen and sit on the desk?
+- **外置 Codex pet**：Dial 显示的是你 Codex 当前选中的 custom pet，来源是本机 `~/.codex/pets` 和 Codex 配置。
+- **沿用官方动画体系**：保留 Codex pet 的 9 行动画语义：`idle`、`running-right`、`running-left`、`waving`、`jumping`、`failed`、`waiting`、`running`、`review`。
+- **状态名不分叉**：Dial payload 只使用 Codex pet 状态名，长期优先级是 `waiting > failed > review > running > idle`。
+- **多任务状态并存**：宠物动画显示最高优先级状态，同时用两排计数显示 `W# F#` / `V# R#`，适合多个 Codex 线程同时运行。
+- **四态任务卡片**：旋转 Dial 浏览 `WAITING`、`FAILED`、`REVIEW`、`RUNNING` 卡片，点击卡片打开对应的 `codex://threads/<thread_id>`。
+- **review 不被历史污染**：首次启动会把历史完成任务设为 baseline，之后只显示新的完成 turn；同一会话后续完成新 turn 会再次出现 review。
+- **USB 只负责刷机**：固件刷入后，日常状态同步走 BLE，Mac 不需要一直插着 USB。
+- **macOS 后台服务**：可安装 LaunchAgent，并通过生成的 `CodexDialBridge.app` 处理蓝牙权限，后台运行时不占 Dock。
+- **Codex 升级可检查**：`codex-compat` 会生成本机兼容性快照，帮助判断 Codex 升级后 pet atlas、session 事件或 app bundle 是否发生漂移。
+- **开源友好边界**：项目不提交用户本地宠物图片、Codex 会话日志、seen 状态、compat 快照或私有配置。
 
-The result is a small desk companion for people who run many Codex tasks at once. It shows:
+## 它解决什么问题
 
-- the same selected Codex custom pet, converted from the official pet atlas
-- current running Codex tasks
-- completed tasks waiting for review
-- a rotary task card UI made for the Dial's physical knob
-- tap-to-open navigation back into the matching Codex Desktop conversation
+Codex Desktop 已经有宠物模式，但它仍然属于屏幕里的 UI。Pet2Dial 把这个状态面板移到桌面硬件上，让 AI coding workspace 多一个常亮、可触摸、可旋转的物理入口。
 
-The project uses the M5Stack Dial as an always-visible, tactile status surface and a compact Codex remote instead of another window on the Mac.
+典型使用场景：
 
-## Hardware
+- 同时跑多个 Codex 任务时，一眼看到当前是否 `running`、`waiting`、`failed` 或有待 `review` 输出。
+- 用旋钮切换任务卡片，减少在桌面窗口之间来回找会话。
+- 点击 Dial 直接回到对应 Codex 线程。
+- 保留 Codex 原生宠物的视觉语言，让硬件端看起来像 Codex pet 的外置镜像。
 
-- M5Stack Dial, powered by M5StampS3
-- Mac running Codex Desktop
-- USB-C cable for firmware flashing
-- Bluetooth Low Energy for daily sync after flashing
+## 支持范围
 
-The M5Stack controller is central to the project: it runs the firmware, renders the circular UI, reads touch/rotary input, and exposes the BLE peripheral that the Mac bridge talks to.
+当前成功路径以 macOS 为基准：
 
-## What It Does
+- macOS
+- Codex Desktop
+- M5Stack Dial（M5StampS3）
+- Python 3.10+
+- PlatformIO
+- USB-C 线，用于首次刷固件
+- Bluetooth Low Energy，用于日常同步
 
-Pet2Dial follows the shortest proven path:
+Windows 和 Linux 目前没有适配和验证。要支持 Windows，至少需要重新处理：
 
-1. Detect the selected Codex custom pet in `~/.codex/pets`.
-2. Read the official Codex `spritesheet.webp` pet atlas.
-3. Convert the 8x9 atlas into one compact 96x96 RGB565 firmware resource.
-4. Build and flash M5Stack Dial firmware with PlatformIO.
-5. Start a Mac BLE bridge named `CodexDial`.
-6. Sync Codex pet state plus running/review tasks.
-7. Open `codex://threads/<thread_id>` when a Dial card is tapped.
+- Codex home 路径发现，macOS 默认是 `~/.codex`
+- BLE bridge 权限和后台运行方式
+- 串口发现逻辑，macOS 默认看 `/dev/cu.usbmodem*`
+- `codex://threads/<thread_id>` 的打开方式
+- 后台服务机制，macOS 当前使用 LaunchAgent
+- Codex Desktop 安装路径和 app bundle 检查方式
 
-The default build intentionally includes only one pet. This keeps flash usage stable and makes the first install predictable.
+我没有 Windows 环境，所以这个仓库当前不承诺 Windows 可用。欢迎基于同一 wire contract 做 Windows bridge 适配。
 
-## Quick Start
+## 快速开始
 
-Install or clone this repository, then run:
+克隆仓库后，在仓库根目录运行：
 
 ```bash
 python3 skill/pet2dial/scripts/pet2dial.py doctor
@@ -57,57 +67,150 @@ python3 skill/pet2dial/scripts/pet2dial.py upload
 python3 skill/pet2dial/scripts/pet2dial.py run-bridge
 ```
 
-For a first install with the Dial already connected over USB:
+如果 Dial 已经通过 USB 接上 Mac，可以直接跑完整成功路径：
 
 ```bash
 python3 skill/pet2dial/scripts/pet2dial.py success-path --upload
 ```
 
-By default the generated working project is created at:
+日常使用建议安装后台服务：
+
+```bash
+python3 skill/pet2dial/scripts/pet2dial.py install-autostart
+python3 skill/pet2dial/scripts/pet2dial.py status
+python3 skill/pet2dial/scripts/pet2dial.py logs
+```
+
+默认生成的工作项目位置：
 
 ```text
 ~/CodexDialPet
 ```
 
-## Skill Usage
+`run-bridge` 和 `install-autostart` 会自动修复生成工程、虚拟环境和缺失 Python 依赖。macOS 上 bridge 会通过生成的 `CodexDialBridge.app` 启动，让系统用标准隐私模型授予蓝牙权限。
 
-Pet2Dial is also a Codex skill. Install the skill folder into:
+## 作为 Codex Skill 使用
+
+把 skill 安装到：
 
 ```text
-~/.codex/skills/pet2dial  (source folder: skill/pet2dial)
+~/.codex/skills/pet2dial
 ```
 
-Then ask Codex:
+或者把本仓库里的 skill 目录作为源：
+
+```text
+skill/pet2dial
+```
+
+然后在 Codex 里说：
 
 ```text
 Use pet2dial to put my current Codex pet on my M5Stack Dial.
 ```
 
-The skill checks the environment, creates a clean project, installs dependencies locally, converts the pet, builds the firmware, uploads it, and runs the BLE bridge.
+Skill 会检查环境、创建干净项目、安装依赖、转换宠物图集、构建固件、上传到 Dial，并启动 BLE bridge。
 
-## UI Model
+## 官方宠物状态模型
 
-The idle view keeps the pet visible. Running and review counters sit above it.
-
-Rotating the Dial opens a task card view. The pet shrinks down and the card shows the selected task. Tapping opens the Codex conversation. A review card remains visible after the tap and is marked seen only after the user rotates away or returns to the pet view.
-
-This behavior is implemented with a small BLE event protocol:
+Pet2Dial 的目标是做 Codex pet 的外置镜像。设备端只接受 Codex pet 状态名：
 
 ```text
-CLICK|<thread_id>  opens the Codex conversation
-LEAVE|<thread_id>  marks an opened review card as seen
+0 idle           空闲
+1 running-right 旋钮向前切换任务卡片时的临时动画
+2 running-left  旋钮向后切换任务卡片时的临时动画
+3 waving        BLE 连接或唤醒类本地事件后的临时动画
+4 jumping       点击宠物大图时的临时互动
+5 failed        Codex turn_aborted / task_failed / task_cancelled
+6 waiting       等待审批、权限、用户输入，或 BLE 断开时的设备等待态
+7 running       Codex 正在运行
+8 review        新完成、尚未在 Dial 上读过的 Codex turn
 ```
 
-## Codex Pet Conversion
+长期状态优先级：
 
-Pet2Dial uses Codex-compatible custom pets:
+```text
+waiting > failed > review > running > idle
+```
+
+当前开源版本默认使用保守的 rollout fallback：读取本机 Codex session JSONL，只输出官方状态名。`task_complete` 映射到 `review`，结构化等待事件如 `approval_request`、`request_user_input` 映射到 `waiting`。如果 Codex 后续提供稳定外部状态 API，新的状态源可以接入同一套 wire contract。
+
+## UI 与交互
+
+宠物大图视图保持宠物可见，顶部显示两排紧凑状态计数：
+
+```text
+W#  F#
+V#  R#
+```
+
+计数含义：
+
+- `W` = waiting
+- `F` = failed
+- `V` = review
+- `R` = running
+
+宠物本体播放最高优先级的长期状态动画。没有单独的主文字标签。
+
+交互规则：
+
+- 点击宠物大图：宠物 `jumping`，随后回到长期状态。
+- 旋钮向前切卡：`running-right`，短暂播放后回到长期状态。
+- 旋钮向后切卡：`running-left`，短暂播放后回到长期状态。
+- 卡片视图点击屏幕：打开当前 Codex 会话。
+- BLE 连接或唤醒类本地事件：短暂 `waving`。
+
+旋转 Dial 会进入任务卡片视图。宠物缩小，卡片展示当前选中的 Codex 会话。卡片标签使用完整状态名：`WAITING`、`FAILED`、`REVIEW`、`RUNNING`。
+
+BLE 事件协议很小：
+
+```text
+CLICK|<thread_id>  打开 Codex 会话
+LEAVE|<thread_id>  把已打开的 review turn 标记为 seen
+```
+
+## 任务卡片与 review 语义
+
+Dial 卡片会显示四类任务：
+
+- `waiting`：等待审批、权限、用户输入或计划确认
+- `failed`：失败、取消、异常中断
+- `review`：新完成、尚未在 Dial 上读过的 turn
+- `running`：正在运行的 Codex 会话
+
+历史完成任务的处理规则：
+
+- 首次启动或从旧 seen 状态升级时，当前历史 `task_complete` 会进入 baseline。
+- baseline 内的旧完成任务不会挤满 Dial。
+- 新出现的 completed turn 会显示为 `review`。
+- 同一个 thread 后续完成新 turn，会再次显示为新的 review。
+- 点击 review 卡片只表示“打开”；离开卡片后才标记为 seen。
+
+手动清空当前 review backlog：
+
+```bash
+python3 skill/pet2dial/scripts/pet2dial.py clear-review-backlog
+```
+
+## 宠物图集转换
+
+Pet2Dial 使用 Codex compatible custom pet：
 
 ```text
 ~/.codex/pets/<pet-id>/pet.json
 ~/.codex/pets/<pet-id>/spritesheet.webp
 ```
 
-The expected atlas geometry is:
+`--pet` 省略时，`auto` 会优先读取 Codex 当前选中的 custom pet：
+
+```text
+selected-avatar-id = "custom:<pet-id>"
+```
+
+旧的 first-awake UI 历史只作为 fallback。
+
+Codex pet atlas 输入规格：
 
 ```text
 1536x1872 atlas
@@ -116,7 +219,7 @@ The expected atlas geometry is:
 9 animation rows
 ```
 
-The firmware uses:
+Dial 固件资源规格：
 
 ```text
 single pet
@@ -126,37 +229,119 @@ single pet
 RGB565
 ```
 
-## Project Layout
+## Codex 兼容性检查
 
-```text
-SKILL.md                         Codex skill entry point
-skill/pet2dial/scripts/pet2dial.py              one-shot setup, build, upload, bridge runner
-skill/pet2dial/templates/project/firmware       M5Stack Dial PlatformIO firmware
-skill/pet2dial/templates/project/codex_dial_bridge
-                                  Mac-side BLE bridge
-skill/pet2dial/templates/project/tools          Codex pet atlas converter
-skill/pet2dial/references/success-contract.md   the exact success path and fixed defaults
-docs/hackster                    Hackster submission copy
+Codex 升级后，pet atlas、session 事件、app bundle 或 URL handler 都可能变化。运行：
+
+```bash
+python3 skill/pet2dial/scripts/pet2dial.py codex-compat
 ```
 
-## Validation
+它会检查：
 
-The version in this repository was validated with:
+- macOS baseline
+- Codex home 和 sessions 是否存在
+- 当前 selected custom pet
+- pet package 和 atlas 几何
+- Codex.app 版本与 `app.asar` hash
+- 近期 rollout JSONL 里的事件类型
+- 与上一次本机兼容性快照的差异
+
+本地快照写入：
+
+```text
+~/CodexDialPet/state/codex_compat_snapshot.json
+```
+
+这个文件是本机诊断状态，不应该提交到仓库。公开契约见：
+
+```text
+skill/pet2dial/references/codex-compatibility.md
+```
+
+## 项目结构
+
+```text
+SKILL.md                                      Codex skill 入口
+skill/pet2dial/scripts/pet2dial.py           一站式 setup/build/upload/bridge 命令
+skill/pet2dial/templates/project/firmware    M5Stack Dial PlatformIO 固件
+skill/pet2dial/templates/project/codex_dial_bridge
+                                             Mac 端 BLE bridge
+skill/pet2dial/templates/project/tools       Codex pet atlas 转换工具
+skill/pet2dial/references/success-contract.md
+                                             成功路径和固定默认值
+skill/pet2dial/references/codex-compatibility.md
+                                             Codex 兼容性契约与升级检查说明
+docs/hackster                                Hackster 发布文案
+```
+
+## 诊断命令
+
+查看环境：
+
+```bash
+python3 skill/pet2dial/scripts/pet2dial.py doctor
+```
+
+检查 Codex 兼容性：
+
+```bash
+python3 skill/pet2dial/scripts/pet2dial.py codex-compat
+```
+
+查看后台服务：
+
+```bash
+python3 skill/pet2dial/scripts/pet2dial.py status
+```
+
+查看 bridge 日志：
+
+```bash
+python3 skill/pet2dial/scripts/pet2dial.py logs
+```
+
+常见日志含义：
+
+- `Could not find BLE device named 'CodexDial'`：Mac 暂时没有扫描到 Dial，bridge 会自动重试。
+- `Service Discovery has not been performed yet`：BLE 连接刚建立或设备短暂重连时，GATT 服务尚未准备好，bridge 会断开并重连。
+- `Sync pet=... mode=...`：Mac 已经把 Codex pet 和任务状态同步到 Dial。
+- `Opened Codex URL codex://threads/...`：点击 Dial 卡片后，Codex URL handler 已被调用。
+
+## 验证记录
+
+当前版本验证过：
 
 ```text
 quick_validate.py skill/pet2dial
+python3 -m unittest discover -s skill/pet2dial/templates/project/tests
+pet2dial.py codex-compat
 pet2dial.py init
 pet2dial.py setup-env
 pet2dial.py convert
 PlatformIO firmware build
 ```
 
-Observed firmware usage:
+观察到的固件占用：
 
 ```text
 RAM:   15.4%
-Flash: 78.9%
+Flash: 79.0%
 ```
+
+## 当前边界
+
+- 主要支持 macOS + Codex Desktop + M5Stack Dial。
+- 默认状态源是本地 rollout fallback，能够复刻官方状态名和优先级，但 waiting/review 精度受 Codex 外部可读状态限制。
+- 固件首次上传需要 USB。
+- 仓库不包含用户自己的 pet 图片、Codex 会话日志、seen 状态文件、本机 compat 快照或本机配置。
+- Windows/Linux 需要单独适配路径、BLE、后台服务、串口和 URL 打开机制。
+
+## English Summary
+
+Pet2Dial turns the selected Codex Desktop custom pet into a tiny external hardware companion on an M5Stack Dial. It converts the official Codex pet atlas into firmware assets, flashes the Dial, and keeps pet/task state synchronized over Bluetooth Low Energy.
+
+The current supported path is macOS-first: Codex Desktop, `~/.codex`, M5Stack Dial, a macOS BLE bridge, LaunchAgent background service, and `codex://threads/<thread_id>` navigation. Windows and Linux are not currently supported, but the BLE wire contract and Codex compatibility document are intended to make future ports possible.
 
 ## Contest Note
 
@@ -165,11 +350,3 @@ This project was built for the M5Stack Global Innovation Contest 2026. It uses a
 ## License
 
 MIT.
-
-## 中文摘要
-
-Pet2Dial 是一个把 Codex 桌面宠物搬到 M5Stack Dial 上的开源项目。它读取 Codex 当前选中的 custom pet，把官方 `spritesheet.webp` 宠物 atlas 转成 Dial 固件里的 `96x96` RGB565 动画资源，然后用蓝牙同步 Codex 的运行中任务和待 review 任务。
-
-Dial 的圆形屏幕负责显示宠物和任务状态；旋钮负责切换任务卡片；点击屏幕会打开对应的 Codex 会话。固件刷入后，日常同步走 BLE，Mac 的 USB-C 口可以空出来。
-
-这个项目的目标是把 AI coding workspace 从电脑屏幕里延伸出来，变成桌面上一个可触摸、可旋转、可一眼看到状态的硬件伴侣。

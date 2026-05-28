@@ -36,6 +36,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     open_cmd = sub.add_parser("open-thread", help="Open a Codex thread by id.")
     open_cmd.add_argument("thread_id")
+
+    clear_reviews = sub.add_parser("clear-review-backlog", help="Mark existing task_complete reviews as already seen.")
+    clear_reviews.add_argument("--codex-home", type=Path)
+    clear_reviews.add_argument("--pet", default="auto")
     return parser
 
 
@@ -61,9 +65,11 @@ class SimHandler(BaseHTTPRequestHandler):
             self._send_json(self.source.snapshot().to_wire())
             return
         if parsed.path == "/open":
-            thread_id = parse_qs(parsed.query).get("thread_id", [""])[0]
+            query = parse_qs(parsed.query)
+            thread_id = query.get("thread_id", [""])[0]
+            turn_id = query.get("turn_id", [""])[0]
             try:
-                mark_seen(thread_id)
+                mark_seen(thread_id, turn_id)
                 open_thread(thread_id)
             except ValueError as exc:
                 self._send_json({"ok": False, "error": str(exc)}, status=400)
@@ -104,6 +110,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "open-thread":
         mark_seen(args.thread_id)
         open_thread(args.thread_id)
+        return 0
+    if args.command == "clear-review-backlog":
+        added = make_source(args).mark_current_reviews_seen()
+        print(f"Marked {added} existing task_complete review thread(s) as seen.")
         return 0
     raise AssertionError(args.command)
 

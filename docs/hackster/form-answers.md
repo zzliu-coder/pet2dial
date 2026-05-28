@@ -12,11 +12,11 @@ To be filled after Hackster publishing.
 
 ## GitHub Repository
 
-https://github.com/codingbull87/pet2dial
+https://github.com/zzliu-coder/pet2dial
 
 ## Short Description
 
-Pet2Dial moves the Codex desktop pet onto an M5Stack Dial. It converts the selected Codex custom pet into Dial firmware, then uses BLE to sync live running and review tasks from Codex Desktop. The Dial becomes a tactile AI workspace companion with rotary task browsing and tap-to-open conversation navigation.
+Pet2Dial moves the Codex desktop pet onto an M5Stack Dial. It converts the selected Codex custom pet into Dial firmware, then uses BLE to sync waiting, failed, review, and running task state from Codex Desktop. The Dial becomes a tactile AI workspace companion with rotary task browsing and tap-to-open conversation navigation.
 
 ## Hardware Used
 
@@ -55,8 +55,8 @@ The M5Stack Dial is the main controller and user interface. Its ESP32-S3 runs th
 2. Run `python3 skill/pet2dial/scripts/pet2dial.py doctor`.
 3. Run `python3 skill/pet2dial/scripts/pet2dial.py success-path --upload` with the Dial connected by USB.
 4. Run `python3 skill/pet2dial/scripts/pet2dial.py run-bridge`.
-5. The Dial displays the selected Codex pet and live running/review task cards over BLE.
+5. The Dial displays the selected Codex pet, live waiting/failed/review/running task cards, and compact state counts over BLE.
 
 ## 中文摘要
 
-Pet2Dial 是一个把 Codex 桌面宠物搬到 M5Stack Dial 上的硬件项目。它读取 Codex 当前选择的 custom pet，转换成 Dial 固件资源，并用蓝牙同步 Codex 的运行中任务和待 review 任务。用户可以旋转 Dial 浏览任务卡片，点击卡片打开对应的 Codex 会话。
+Pet2Dial 是一个把 Codex 桌面宠物搬到 M5Stack Dial 上的硬件项目。它读取 Codex 当前选择的 custom pet，转换成 Dial 固件资源，并用蓝牙同步 Codex 的 waiting、failed、review、running 任务状态和计数。用户可以旋转 Dial 浏览任务卡片，点击卡片打开对应的 Codex 会话。

@@ -34,6 +34,10 @@ struct AppState {
   char pet[32] = "";
   Bubble bubbles[MAX_BUBBLES];
   int count = 0;
+  int waitingCount = 0;
+  int failedCount = 0;
+  int reviewCount = 0;
+  int runningCount = 0;
   uint32_t lastUpdateMs = 0;
   bool connected = false;
 };
@@ -53,9 +57,11 @@ static bool uiDirty = true;
 static int petFrame = 0;
 static int visiblePetState = -1;
 static int pendingPetState = -1;
+static int transientPetState = -1;
 static int selectedIndex = 0;
 static long lastEncoderPosition = 0;
 static int encoderRemainder = 0;
+static uint32_t transientUntilMs = 0;
 static uint32_t focusUntilMs = 0;
 static uint32_t lastUiAnimMs = 0;
 static float focusProgress = 0.0f;
@@ -73,13 +79,22 @@ static const uint16_t *currentPetFrames() {
 
 static int currentPetState() {
   if (!appState.connected) return PET_ROW_WAITING;
-  if (strcmp(appState.mode, "running") == 0) return PET_ROW_RUNNING;
-  if (strcmp(appState.mode, "working") == 0) return PET_ROW_RUNNING;
-  if (strcmp(appState.mode, "done") == 0) return PET_ROW_REVIEW;
-  if (strcmp(appState.mode, "aborted") == 0) return PET_ROW_FAILED;
-  if (strcmp(appState.mode, "review") == 0) return PET_ROW_REVIEW;
+  if (transientPetState >= 0 && millis() < transientUntilMs) return transientPetState;
   if (strcmp(appState.mode, "waiting") == 0) return PET_ROW_WAITING;
+  if (strcmp(appState.mode, "failed") == 0) return PET_ROW_FAILED;
+  if (strcmp(appState.mode, "running") == 0) return PET_ROW_RUNNING;
+  if (strcmp(appState.mode, "review") == 0) return PET_ROW_REVIEW;
   return PET_ROW_IDLE;
+}
+
+static void triggerPetState(int state, uint32_t durationMs) {
+  if (!appState.connected) return;
+  transientPetState = state;
+  transientUntilMs = millis() + durationMs;
+  pendingPetState = state;
+  visiblePetState = state;
+  petFrame = 0;
+  uiDirty = true;
 }
 
 static uint16_t rgb(uint8_t r, uint8_t g, uint8_t b) {
@@ -87,19 +102,19 @@ static uint16_t rgb(uint8_t r, uint8_t g, uint8_t b) {
 }
 
 static uint16_t stateColor(const char *state) {
+  if (strcmp(state, "waiting") == 0) return rgb(245, 181, 72);
+  if (strcmp(state, "failed") == 0) return rgb(226, 92, 84);
   if (strcmp(state, "review") == 0) return rgb(66, 198, 142);
-  if (strcmp(state, "done") == 0) return rgb(66, 198, 142);
-  if (strcmp(state, "aborted") == 0) return rgb(219, 103, 90);
-  if (strcmp(state, "running") == 0) return rgb(240, 189, 75);
+  if (strcmp(state, "running") == 0) return rgb(91, 166, 255);
   return rgb(136, 160, 181);
 }
 
-static const char *stateShortLabel(const char *state) {
+static const char *stateFullLabel(const char *state) {
+  if (strcmp(state, "waiting") == 0) return "WAITING";
+  if (strcmp(state, "failed") == 0) return "FAILED";
   if (strcmp(state, "review") == 0) return "REVIEW";
-  if (strcmp(state, "done") == 0) return "REVIEW";
-  if (strcmp(state, "aborted") == 0) return "!";
-  if (strcmp(state, "running") == 0) return "RUN";
-  return "-";
+  if (strcmp(state, "running") == 0) return "RUNNING";
+  return "IDLE";
 }
 
 static bool isFocusMode() {
@@ -112,6 +127,14 @@ static int stateCount(const char *state) {
     if (strcmp(appState.bubbles[i].state, state) == 0) count++;
   }
   return count;
+}
+
+static int totalStateCount(const char *state) {
+  if (strcmp(state, "waiting") == 0) return appState.waitingCount;
+  if (strcmp(state, "failed") == 0) return appState.failedCount;
+  if (strcmp(state, "review") == 0) return appState.reviewCount;
+  if (strcmp(state, "running") == 0) return appState.runningCount;
+  return 0;
 }
 
 static String basenameOf(const char *path) {
@@ -171,6 +194,7 @@ static void openSelectedThread() {
   if (appState.count <= 0 || millis() - lastClickMs < 350) return;
   lastClickMs = millis();
   sendEvent("CLICK", appState.bubbles[selectedIndex].threadId);
+  triggerPetState(PET_ROW_WAVING, 1200);
   focusUntilMs = millis() + 5000;
   uiDirty = true;
 }
@@ -200,6 +224,8 @@ static void parseStateJson(const String &json) {
 
   strlcpy(appState.mode, doc["mode"] | "idle", sizeof(appState.mode));
   strlcpy(appState.pet, doc["pet"] | PET_SETS[0].id, sizeof(appState.pet));
+  int oldRunning = appState.runningCount;
+  int oldReview = appState.reviewCount;
   JsonArray bubbles = doc["bubbles"].as<JsonArray>();
   appState.count = min((int)bubbles.size(), MAX_BUBBLES);
   for (int i = 0; i < appState.count; i++) {
@@ -210,6 +236,10 @@ static void parseStateJson(const String &json) {
     strlcpy(appState.bubbles[i].state, item["state"] | "idle", sizeof(appState.bubbles[i].state));
     appState.bubbles[i].updatedAt = item["updated_at"] | 0.0;
   }
+  appState.waitingCount = doc["counts"]["waiting"] | stateCount("waiting");
+  appState.failedCount = doc["counts"]["failed"] | stateCount("failed");
+  appState.reviewCount = doc["counts"]["review"] | stateCount("review");
+  appState.runningCount = doc["counts"]["running"] | stateCount("running");
   int preservedIndex = -1;
   if (strlen(selectedThreadId) > 0) {
     for (int i = 0; i < appState.count; i++) {
@@ -226,6 +256,11 @@ static void parseStateJson(const String &json) {
   }
   if (appState.count > 0) strlcpy(selectedThreadId, appState.bubbles[selectedIndex].threadId, sizeof(selectedThreadId));
   appState.lastUpdateMs = millis();
+  int newRunning = appState.runningCount;
+  int newReview = appState.reviewCount;
+  if (newRunning > oldRunning || newReview > oldReview) {
+    triggerPetState(PET_ROW_JUMPING, 1200);
+  }
   pendingPetState = currentPetState();
   uiDirty = true;
 }
@@ -277,7 +312,7 @@ class StateCallbacks : public BLECharacteristicCallbacks {
 class ServerCallbacks : public BLEServerCallbacks {
   void onConnect(BLEServer *server) override {
     appState.connected = true;
-    pendingPetState = currentPetState();
+    triggerPetState(PET_ROW_WAVING, 1400);
     uiDirty = true;
     Serial.println("BLE client connected");
   }
@@ -328,24 +363,24 @@ static void drawText() {
   canvas.drawCircle(120, 120, 116, ring);
 }
 
+static void drawCountPill(int x, int y, const char *state, const char *prefix) {
+  String label = String(prefix) + String(totalStateCount(state));
+  canvas.fillRoundRect(x, y - 10, 50, 20, 9, rgb(28, 36, 42));
+  canvas.fillCircle(x + 12, y, 4, stateColor(state));
+  canvas.setTextColor(rgb(229, 236, 240), rgb(28, 36, 42));
+  canvas.drawString(fitText(label, 28), x + 32, y);
+}
+
 static void drawCounts() {
   if (focusProgress > 0.08f) return;
-  int y = 58;
-  int runCount = stateCount("running");
-  int reviewCount = stateCount("review") + stateCount("done");
   canvas.setTextDatum(middle_center);
   canvas.setTextSize(1);
   canvas.setFont(&fonts::efontCN_12);
 
-  canvas.fillRoundRect(72, y - 10, 42, 20, 9, rgb(28, 36, 42));
-  canvas.fillCircle(84, y, 4, stateColor("running"));
-  canvas.setTextColor(rgb(229, 236, 240), rgb(28, 36, 42));
-  canvas.drawString("R" + String(runCount), 99, y);
-
-  canvas.fillRoundRect(126, y - 10, 42, 20, 9, rgb(28, 36, 42));
-  canvas.fillCircle(138, y, 4, stateColor("review"));
-  canvas.setTextColor(rgb(229, 236, 240), rgb(28, 36, 42));
-  canvas.drawString("V" + String(reviewCount), 153, y);
+  drawCountPill(65, 42, "waiting", "W");
+  drawCountPill(125, 42, "failed", "F");
+  drawCountPill(65, 64, "review", "V");
+  drawCountPill(125, 64, "running", "R");
 }
 
 static void drawTaskCard() {
@@ -364,10 +399,11 @@ static void drawTaskCard() {
   canvas.setFont(&fonts::efontCN_12);
   canvas.setTextSize(1);
   canvas.setTextDatum(middle_center);
-  int labelW = strcmp(bubble.state, "done") == 0 ? 52 : 36;
+  const char *label = stateFullLabel(bubble.state);
+  int labelW = min(max(canvas.textWidth(label) + 16, 54), max(44, cardW - 58));
   canvas.fillRoundRect(cardX + 12, cardY + 12, labelW, 18, 7, accent);
   canvas.setTextColor(rgb(14, 20, 24), accent);
-  canvas.drawString(stateShortLabel(bubble.state), cardX + 12 + labelW / 2, cardY + 21);
+  canvas.drawString(fitText(String(label), labelW - 10), cardX + 12 + labelW / 2, cardY + 21);
 
   canvas.setTextDatum(middle_right);
   String counts = String(selectedIndex + 1) + "/" + String(appState.count);
@@ -405,14 +441,20 @@ static void handleTouch() {
   if (!touch.wasClicked() || millis() - lastTouchMs < 250) return;
   lastTouchMs = millis();
 
-  if (appState.count > 0) {
+  if (isFocusMode() && appState.count > 0) {
     openSelectedThread();
+  } else {
+    triggerPetState(PET_ROW_JUMPING, 900);
   }
 }
 
 static void handleButton() {
-  if (M5Dial.BtnA.wasClicked() && appState.count > 0) {
-    openSelectedThread();
+  if (M5Dial.BtnA.wasClicked()) {
+    if (isFocusMode() && appState.count > 0) {
+      openSelectedThread();
+    } else {
+      triggerPetState(PET_ROW_JUMPING, 900);
+    }
   }
 }
 
@@ -426,6 +468,7 @@ static void handleEncoder() {
   if (steps == 0) return;
   encoderRemainder -= steps * 4;
   int delta = steps > 0 ? 1 : -1;
+  triggerPetState(delta > 0 ? PET_ROW_RUNNING_RIGHT : PET_ROW_RUNNING_LEFT, 700);
   char previousThreadId[MAX_THREAD_ID] = "";
   strlcpy(previousThreadId, appState.bubbles[selectedIndex].threadId, sizeof(previousThreadId));
   selectedIndex = (selectedIndex + delta + appState.count) % appState.count;
@@ -507,6 +550,8 @@ void loop() {
 
   if (PET_FRAME_COUNT > 1 && millis() - lastAnimMs > 180) {
     lastAnimMs = millis();
+    int desiredPetState = currentPetState();
+    if (desiredPetState != pendingPetState) pendingPetState = desiredPetState;
     petFrame = (petFrame + 1) % PET_FRAME_COUNT;
     if (pendingPetState >= 0 && pendingPetState != visiblePetState && petFrame == 0) {
       visiblePetState = pendingPetState;

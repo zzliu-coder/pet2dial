@@ -26,9 +26,10 @@ class Bubble:
 @dataclass(slots=True)
 class DialState:
     v: int = 1
-    pet: str = "proofwarden"
+    pet: str = ""
     mode: str = "idle"
     now: float = 0.0
+    counts: dict[str, int] = field(default_factory=dict)
     bubbles: list[Bubble] = field(default_factory=list)
 
     def to_wire(self) -> dict:
@@ -50,7 +51,8 @@ def visual_signature(state: DialState) -> tuple:
     return (
         state.pet,
         state.mode,
-        tuple((item.thread_id, item.title, item.state) for item in state.bubbles[:MAX_BUBBLES]),
+        tuple(sorted(state.counts.items())),
+        tuple((item.thread_id, item.turn_id, item.title, item.state) for item in state.bubbles[:MAX_BUBBLES]),
     )
 
 

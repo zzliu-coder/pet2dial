@@ -12,7 +12,7 @@ Topology: sequential skill. No subagents.
 
 1. Any compliant runtime must guide or execute a local workflow that converts the selected Codex custom pet into M5Stack Dial firmware and runs a BLE bridge for Codex state.
 
-2. Success means a flashed Dial displays the selected Codex pet, receives running/review cards, and opens Codex threads when cards are clicked.
+2. Success means a flashed Dial displays the selected Codex pet using all 9 Codex atlas rows, receives waiting/failed/review/running cards and global state counts, and opens Codex threads when cards are clicked.
 
 3. Persisted artifacts:
 
@@ -28,6 +28,7 @@ Topology: sequential skill. No subagents.
 - dependency setup: `scripts/pet2dial.py setup-env`
 - pet conversion: template `tools/convert_pet.py`
 - build/upload/run/verify: `scripts/pet2dial.py`
+- Codex compatibility drift check: `scripts/pet2dial.py codex-compat`
 
 5. Runtime-specific capabilities:
 
@@ -65,6 +66,71 @@ These were useful exploration topics during the original run, but they do not be
 ## Known Boundary
 
 The skill mirrors Codex task state from local rollout files and maintains bridge-local review seen state. It does not currently consume Codex Desktop's internal Electron `thread-read-state-changed` IPC state because no stable public local persistence point was found during the run.
+
+The skill's Codex coupling is intentionally strong and narrow:
+
+- Codex pet package: `pet.json` and `spritesheet.webp`
+- Codex selected-pet persistence from `~/.codex/config.toml` when available
+- Codex rollout session files for rollout fallback waiting/failed/review/running visual state
+- `codex://threads/<thread_id>` for card opening
+- bridge-local seen-review-turn state only
+- local compatibility snapshots under `<project>/state/codex_compat_snapshot.json`
+
+Cleanup rule: remove fallback pet ids, multi-pet bundle paths, and synthetic task states when they do not come from the Codex data contract or the bridge's own seen-state file.
+
+Official-state boundary:
+
+- Official animation rows and state names are fixed: `idle`, `running-right`, `running-left`, `waving`, `jumping`, `failed`, `waiting`, `running`, `review`.
+- The current open-source bridge does not depend on Codex Desktop's experimental app-server runtime state.
+- The rollout fallback keeps the same official names and priority order: `waiting > failed > review > running > idle`.
+- `task_complete` is a fallback event source for `review`; it is not a public task state name.
+- Review seen state is keyed by completed turn, not only by thread.
+- `codex-compat` records local drift evidence; the snapshot is diagnostic state and must not be committed.
+
+## Service Upgrade Packet
+
+Observed Symptoms:
+
+- `run-bridge` exposed project paths, venv state, missing dependencies, and raw Python/macOS failures to the user.
+- macOS killed raw Python BLE scans when the process lacked `NSBluetoothAlwaysUsageDescription`.
+- A previous selected pet id could leak into `auto` snapshots while a user wanted a different installed pet.
+- Running the bridge required a foreground terminal and had no standard status, restart, or log surface.
+
+Shared Pressure:
+
+- The bridge was shaped as a developer command after the firmware experiment succeeded.
+- Open-source users need a device-service mental model with self-healing setup and visible health.
+
+Natural Failure Mechanism:
+
+- Users run the command from a clean machine or changed Codex pet state, hit an environment or BLE permission failure, and receive a traceback or stale pet result with no next action.
+
+Positive Success Path:
+
+- `run-bridge` initializes the project, creates the venv, installs missing dependencies, generates a Bluetooth-capable macOS app wrapper, and starts the bridge.
+- `install-autostart` installs a LaunchAgent so login starts the bridge automatically.
+- `status`, `logs`, and `restart-bridge` provide a user-visible service surface.
+- `--pet <pet-id>` pins a specific local pet while `auto` remains the portable default.
+
+Structural Levers:
+
+- Move environment repair into `scripts/pet2dial.py`.
+- Make LaunchAgent operations first-class commands.
+- Expand `doctor` from static prerequisites to service health.
+- Keep user-specific pet ids and local paths out of the skill package.
+
+Preserved Invariants:
+
+- The visual source is still a Codex custom pet package under `~/.codex/pets/<pet-id>`.
+- The firmware still embeds one 96x96 RGB565 atlas by default.
+- The bridge still reads local Codex rollout files. It emits waiting/failed/review/running task cards, sends global state counts for the pet view, and keeps review visibility governed by bridge-local seen state.
+- USB is still needed for flashing; BLE is used for daily sync.
+
+Behavior Proof:
+
+- Structural validation must pass.
+- Parser smoke tests must cover `doctor`, `run-bridge --help`, `install-autostart --help`, `status`, and `logs`.
+- Runtime proof remains a successful build/upload plus bridge logs showing connection and sync.
 
 ## Validation Evidence
 

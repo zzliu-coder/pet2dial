@@ -19,5 +19,10 @@ def thread_url(thread_id: str) -> str:
 
 
 def open_thread(thread_id: str) -> None:
-    subprocess.run(["/usr/bin/open", thread_url(thread_id)], check=False)
-
+    url = thread_url(thread_id)
+    result = subprocess.run(["/usr/bin/open", url], check=False, capture_output=True, text=True)
+    if result.returncode != 0:
+        message = (result.stderr or result.stdout or "").strip()
+        print(f"Failed to open Codex thread {thread_id}: open exited {result.returncode} {message}".strip(), flush=True)
+    else:
+        print(f"Opened Codex URL {url}", flush=True)

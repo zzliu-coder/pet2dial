@@ -15,7 +15,7 @@ Pet2Dial keeps Codex as the source of truth. The Mac bridge reads the local Code
 ## What Makes It Special
 
 - It is a physical extension of Codex, with the selected Codex pet moved from the Mac screen onto the desk.
-- It works like a rotary task remote: turn the knob to browse running/review tasks and tap to jump back to the exact Codex conversation.
+- It works like a rotary task remote: turn the knob to browse waiting/failed/review/running tasks and tap to jump back to the exact Codex conversation.
 - It uses the official Codex custom pet atlas format instead of arbitrary static images.
 - It turns the Dial's rotary encoder into a natural task selector.
 - It keeps USB free after flashing by using Bluetooth Low Energy for daily sync.
@@ -73,8 +73,8 @@ Keeping one pet in firmware is a deliberate design choice. It keeps flash usage 
 The firmware runs on the M5Stack Dial. It:
 
 - renders the selected pet
-- animates `idle`, `running`, `review`, and `waiting` states
-- shows running and review counters
+- animates all 9 Codex pet rows, including `idle`, `failed`, `waiting`, `running`, and `review`
+- shows W/F and V/R counters in the pet view
 - opens a task card UI when the rotary encoder is turned
 - sends tap and leave events back to the Mac over BLE
 
@@ -109,7 +109,7 @@ This lets a review card remain visible while the user is still looking at it. Th
 Clone the repository:
 
 ```bash
-git clone https://github.com/codingbull87/pet2dial.git
+git clone https://github.com/zzliu-coder/pet2dial.git
 cd pet2dial
 ```
 
@@ -211,11 +211,11 @@ The second challenge was review semantics. A finished task should not disappear 
 Repository:
 
 ```text
-https://github.com/codingbull87/pet2dial
+https://github.com/zzliu-coder/pet2dial
 ```
 
 ## 中文摘要
 
-Pet2Dial 把 Codex 桌面里的宠物搬到 M5Stack Dial 上。它读取 Codex 当前选中的 custom pet，把官方宠物 atlas 转成 Dial 固件资源，刷入 M5Stack Dial，然后通过蓝牙同步 Codex 的运行中任务和待 review 任务。旋转 Dial 可以切换任务卡片，点击卡片会打开对应的 Codex 会话。
+Pet2Dial 把 Codex 桌面里的宠物搬到 M5Stack Dial 上。它读取 Codex 当前选中的 custom pet，把官方宠物 atlas 转成 Dial 固件资源，刷入 M5Stack Dial，然后通过蓝牙同步 Codex 的 waiting、failed、review、running 任务状态和计数。旋转 Dial 可以切换任务卡片，点击卡片会打开对应的 Codex 会话。
 
 这个项目的重点是把 AI 工作流从电脑屏幕里拿出来，变成桌面上的一个可触摸、可旋转、可一眼看到状态的硬件伴侣。

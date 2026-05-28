@@ -4,17 +4,17 @@ Pet2Dial recreates the Codex desktop pet on an M5Stack Dial, then turns the Dial
 
 Story
 
-Codex already has a pet mode inside the desktop app. Pet2Dial moves that experience out of the Mac screen and onto the desk. The result is a small physical companion that shows the selected Codex pet, live running tasks, and completed tasks waiting for review.
+Codex already has a pet mode inside the desktop app. Pet2Dial moves that experience out of the Mac screen and onto the desk. The result is a small physical companion that shows the selected Codex pet plus waiting, failed, review, and running task state.
 
 The project is designed around the M5Stack Dial's strengths. The circular display makes the pet feel like a small object rather than another window. The rotary encoder becomes a natural way to browse tasks. Touch gives a direct action: tap the selected task card and Codex opens the matching conversation on the Mac.
 
-This makes the Dial feel a little like a handheld remote for an AI coding workspace. In the idle state it is a desk pet. When the knob is turned, it becomes a task switcher for running and review work.
+This makes the Dial feel a little like a handheld remote for an AI coding workspace. In the idle state it is a desk pet. When the knob is turned, it becomes a task switcher for waiting, failed, review, and running work.
 
 What makes it special
 
 1. It is a physical extension of the Codex pet experience.
 2. It converts the selected Codex custom pet atlas instead of using a generic static icon.
-3. It syncs running and review task state over BLE.
+3. It syncs waiting, failed, review, and running task state over BLE.
 4. It uses the Dial's rotary encoder for task browsing.
 5. It supports tap-to-open navigation back into the exact Codex conversation.
 
@@ -31,13 +31,13 @@ The project has three parts.
 
 First, the pet converter reads the selected Codex custom pet from the local Codex pet folder. It converts the official animated pet atlas into compact RGB565 frames for the M5Stack Dial firmware.
 
-Second, the firmware renders the pet and the task UI. The idle view keeps the pet visible. Running and review counters sit above it. Rotating the Dial opens a task card view where the pet shrinks and the selected task becomes readable.
+Second, the firmware renders the pet and the task UI. The pet view keeps the pet visible, uses the pet animation for the highest-priority active state, and shows compact counts in two rows: W/F above V/R. Rotating the Dial opens a task card view where the pet shrinks and the selected task becomes readable.
 
-Third, the Mac bridge syncs Codex state to the Dial over BLE. It sends the current pet mode, running tasks, and review tasks. When the user taps a card, the Dial sends an event back to the Mac bridge, and the bridge opens the matching Codex conversation.
+Third, the Mac bridge syncs Codex state to the Dial over BLE. It sends the current pet mode plus waiting, failed, review, and running cards. When the user taps a card, the Dial sends an event back to the Mac bridge, and the bridge opens the matching Codex conversation.
 
 Interaction model
 
-Idle view: the pet sits on the Dial, with running and review counters above it.
+Idle view: the pet sits on the Dial, with W/F and V/R counters above it.
 Rotate: the Dial becomes a task browser.
 Tap: open the selected Codex conversation on the Mac.
 Rotate away: after a review card has been opened, it can leave the visible review queue.
@@ -45,7 +45,7 @@ Rotate away: after a review card has been opened, it can leave the visible revie
 Build steps
 
 Clone the repository:
-git clone https://github.com/codingbull87/pet2dial.git
+git clone https://github.com/zzliu-coder/pet2dial.git
 cd pet2dial
 
 Run the environment check:
@@ -81,8 +81,8 @@ The Dial is a strong fit because the round display, touch input, rotary encoder,
 
 GitHub
 
-https://github.com/codingbull87/pet2dial
+https://github.com/zzliu-coder/pet2dial
 
 中文摘要
 
-Pet2Dial 把 Codex 桌面里的宠物搬到 M5Stack Dial 上。它读取 Codex 当前选择的 custom pet，把官方宠物 atlas 转成 Dial 固件资源，并通过蓝牙同步 Codex 的运行中任务和待 review 任务。旋转 Dial 可以浏览任务卡片，点击卡片会打开对应的 Codex 会话。它既是桌面宠物，也是一个用于 Codex 任务切换和会话跳转的小型实体遥控器。
+Pet2Dial 把 Codex 桌面里的宠物搬到 M5Stack Dial 上。它读取 Codex 当前选择的 custom pet，把官方宠物 atlas 转成 Dial 固件资源，并通过蓝牙同步 Codex 的 waiting、failed、review、running 任务状态和计数。旋转 Dial 可以浏览任务卡片，点击卡片会打开对应的 Codex 会话。它既是桌面宠物，也是一个用于 Codex 任务切换和会话跳转的小型实体遥控器。
