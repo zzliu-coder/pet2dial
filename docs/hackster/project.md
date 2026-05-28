@@ -91,9 +91,9 @@ The Mac bridge reads Codex local state and writes compact JSON frames to the Dia
 It syncs:
 
 - currently selected pet id
-- current mode: idle, running, review, waiting
-- running task cards
-- completed tasks waiting for review
+- current mode: idle, waiting, failed, review, running
+- waiting/failed/review/running task cards
+- compact W/F and V/R state counts
 
 The event protocol is intentionally small:
 
@@ -170,7 +170,7 @@ Observed firmware usage from the working prototype:
 
 ```text
 RAM:   15.4%
-Flash: 78.9%
+Flash: 79.0%
 ```
 
 ## Demo Script
@@ -178,7 +178,7 @@ Flash: 78.9%
 1. Show Codex Desktop with a custom pet selected.
 2. Show the M5Stack Dial displaying the same pet.
 3. Start or finish a Codex task.
-4. Show the Dial counter changing from `V0` to `V1`.
+4. Show the Dial counters changing, for example from `V0` to `V1` or `W0` to `W1`.
 5. Rotate the Dial to open the task card.
 6. Tap the card and show Codex opening the matching conversation.
 7. Rotate away and show the review card leaving the queue.
