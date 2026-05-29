@@ -1,6 +1,6 @@
-# T-Encoder Pro
+# LilyGO T-Encoder Pro
 
-Pet2Dial supports T-Encoder Pro as a second hardware target using the same Codex pet source, BLE bridge, task cards, and `CLICK` / `LEAVE` semantics as the M5Stack Dial target.
+Pet2Dial supports LilyGO T-Encoder Pro as a second hardware target using the same Codex pet source, BLE bridge, task cards, and `CLICK` / `LEAVE` semantics as the M5Stack Dial target.
 
 ## Hardware
 

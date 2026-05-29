@@ -1,6 +1,6 @@
 # Pet2Dial
 
-把 Codex Desktop 的宠物搬到 M5Stack Dial 上，让它变成一个桌面外置宠物和旋钮式任务遥控器。
+把 Codex Desktop 的宠物刷到 M5Stack Dial 或 LilyGO T-Encoder Pro 上，让它变成一个桌面外置宠物和旋钮式任务遥控器。
 
 Pet2Dial 是一个 Codex skill、圆屏设备固件和 macOS BLE bridge 组成的开源项目。它读取你在 Codex 中当前选中的 custom pet，把官方 `spritesheet.webp` 动画图集转换成设备固件资源，再通过 Bluetooth Low Energy 持续同步 Codex 的宠物状态、任务卡片和状态计数。
 
@@ -14,7 +14,7 @@ Pet2Dial 是一个 Codex skill、圆屏设备固件和 macOS BLE bridge 组成�
 - **多任务状态并存**：宠物动画显示最高优先级状态，同时用两排计数显示 `W# F#` / `V# R#`，适合多个 Codex 线程同时运行。
 - **四态任务卡片**：旋转 Dial 浏览 `WAITING`、`FAILED`、`REVIEW`、`RUNNING` 卡片，点击卡片打开对应的 `codex://threads/<thread_id>`。
 - **review 不被历史污染**：首次启动会把历史完成任务设为 baseline，之后只显示新的完成 turn；同一会话后续完成新 turn 会再次出现 review。
-- **双硬件目标**：默认支持 M5Stack Dial，也支持 T-Encoder Pro。两者共享同一个 BLE 协议、bridge 和 Codex 状态模型。
+- **双硬件目标**：默认支持 M5Stack Dial，也支持 LilyGO T-Encoder Pro；两者共享同一个 BLE 协议、bridge 和 Codex 状态模型。
 - **USB 只负责刷机**：固件刷入后，日常状态同步走 BLE，Mac 不需要一直插着 USB。
 - **macOS 后台服务**：可安装 LaunchAgent，并通过生成的 `CodexDialBridge.app` 处理蓝牙权限，后台运行时不占 Dock。
 - **Codex 升级可检查**：`codex-compat` 会生成本机兼容性快照，帮助判断 Codex 升级后 pet atlas、session 事件或 app bundle 是否发生漂移。
@@ -37,7 +37,7 @@ Codex Desktop 已经有宠物模式，但它仍然属于屏幕里的 UI。Pet2Di
 
 - macOS
 - Codex Desktop
-- M5Stack Dial（M5StampS3）或 T-Encoder Pro
+- M5Stack Dial（M5StampS3）或 LilyGO T-Encoder Pro
 - Python 3.10+
 - PlatformIO
 - USB-C 线，用于首次刷固件
@@ -88,9 +88,9 @@ python3 skill/pet2dial/scripts/pet2dial.py logs
 ~/CodexDialPet
 ```
 
-## 快速开始：T-Encoder Pro
+## 快速开始：LilyGO T-Encoder Pro
 
-T-Encoder Pro 使用同一套 Codex pet 转换、BLE bridge、LaunchAgent 和任务卡片协议。差异在固件层：CO5300 390x390 圆屏、CST816 touch、物理编码器、U8g2 CJK 字体和 LilyGO board support。
+LilyGO T-Encoder Pro 使用同一套 Codex pet 转换、BLE bridge、LaunchAgent 和任务卡片协议。差异在固件层：CO5300 390x390 圆屏、CST816 touch、物理编码器、U8g2 CJK 字体和 LilyGO board support。
 
 推荐生成项目位置：
 
@@ -110,7 +110,7 @@ python3 skill/pet2dial/scripts/pet2dial.py --target t-encoder-pro --project ~/Co
 python3 skill/pet2dial/scripts/pet2dial.py --target t-encoder-pro --project ~/CodexTEncoderPet install-autostart
 ```
 
-如果 T-Encoder Pro 已经通过 USB 接上 Mac，可以直接跑完整成功路径：
+如果 LilyGO T-Encoder Pro 已经通过 USB 接上 Mac，可以直接跑完整成功路径：
 
 ```bash
 python3 skill/pet2dial/scripts/pet2dial.py --target t-encoder-pro --project ~/CodexTEncoderPet success-path --upload
@@ -129,7 +129,7 @@ https://github.com/Xinyuan-LilyGO/T-Encoder-Pro.git
 5f5c3bf6a714991001d385ca8c13ca75a41c5a98
 ```
 
-T-Encoder Pro 详细说明见：
+LilyGO T-Encoder Pro 详细说明见：
 
 ```text
 docs/boards/t-encoder-pro.md
@@ -382,7 +382,7 @@ Flash: 79.0%
 
 ## 当前边界
 
-- 主要支持 macOS + Codex Desktop + M5Stack Dial / T-Encoder Pro。
+- 主要支持 macOS + Codex Desktop + M5Stack Dial / LilyGO T-Encoder Pro。
 - 默认状态源是本地 rollout fallback，能够复刻官方状态名和优先级，但 waiting/review 精度受 Codex 外部可读状态限制。
 - 固件首次上传需要 USB。
 - 仓库不包含用户自己的 pet 图片、Codex 会话日志、seen 状态文件、本机 compat 快照、本机配置、PlatformIO 构建缓存或 T-Encoder vendor checkout。
@@ -390,7 +390,7 @@ Flash: 79.0%
 
 ## English Summary
 
-Pet2Dial turns the selected Codex Desktop custom pet into a tiny external hardware companion on an M5Stack Dial or T-Encoder Pro. It converts the official Codex pet atlas into firmware assets, flashes the device, and keeps pet/task state synchronized over Bluetooth Low Energy.
+Pet2Dial turns the selected Codex Desktop custom pet into a tiny external hardware companion on an M5Stack Dial or LilyGO T-Encoder Pro. It converts the official Codex pet atlas into firmware assets, flashes the device, and keeps pet/task state synchronized over Bluetooth Low Energy.
 
 The current supported path is macOS-first: Codex Desktop, `~/.codex`, M5Stack Dial, a macOS BLE bridge, LaunchAgent background service, and `codex://threads/<thread_id>` navigation. Windows and Linux are not currently supported, but the BLE wire contract and Codex compatibility document are intended to make future ports possible.
 
