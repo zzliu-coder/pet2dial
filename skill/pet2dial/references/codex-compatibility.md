@@ -9,6 +9,7 @@ Current support target:
 - macOS
 - Codex Desktop
 - M5Stack Dial / M5StampS3
+- T-Encoder Pro as an alternate firmware target sharing the same bridge and BLE contract
 - Python 3.10+
 - PlatformIO
 - Bluetooth Low Energy
@@ -150,6 +151,8 @@ Review cards are governed by Pet2Dial's own seen-state file:
 ```
 
 Clicking a review card opens the thread. Leaving the card marks that completed turn as seen.
+
+The same wire schema is used by M5Stack Dial and T-Encoder Pro. Board-specific firmware must adapt display, input, font, and layout without changing bridge state semantics.
 
 ## Dial Local Actions
 

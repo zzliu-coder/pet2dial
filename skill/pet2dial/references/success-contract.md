@@ -22,6 +22,11 @@ Trigger: "Keep my Dial synced after I log in."
 Steps: Install the LaunchAgent. The agent launches the macOS bridge app, which starts the project venv bridge and writes logs.
 Result: The user does not need a terminal window; `status`, `restart-bridge`, and `logs` expose health.
 
+Use Case: T-Encoder Pro firmware refresh
+Trigger: "Use the latest T-Encoder firmware" or "continue the T-Encoder Pro hardware adapter."
+Steps: Keep the existing pet2dial bridge project, build and upload the T-Encoder Pro firmware project, restart or verify the shared bridge, then read back serial or bridge logs.
+Result: T-Encoder Pro advertises `CodexDial`, displays the selected Codex pet, uses the same task cards and counts, and preserves CLICK/LEAVE review semantics.
+
 ## Fixed Success Path
 
 The visual source is the Codex custom pet package:
@@ -72,6 +77,18 @@ Firmware:
 - BLE peripheral name: `CodexDial`
 - State write protocol: chunked `CD1|seq|idx|total|json-part`
 - Event notify protocol: `CLICK|thread_id` and `LEAVE|thread_id`
+
+Alternate firmware target:
+
+- Board: T-Encoder Pro
+- Display: 390x390 CO5300 circular display
+- Input: CST816 touch plus physical encoder and button
+- BLE peripheral name: `CodexDial`
+- State write protocol: same chunked `CD1|seq|idx|total|json-part`
+- Event notify protocol: same `CLICK|thread_id` and `LEAVE|thread_id`
+- Text: UTF-8-capable CJK font and pixel-width clipping for title and cwd text
+- Layout: card, counts, and pet constrained to the round safe area
+- Encoder: detent-complete stepping to reduce accidental jumps and flicker
 
 Bridge:
 
@@ -175,7 +192,7 @@ Allowed local bridge state:
 - `<project>/state/seen_done_threads.json`, schema v2, which stores review turn ids already seen through this bridge and a fallback baseline timestamp.
 - `<project>/state/codex_compat_snapshot.json`, written by `codex-compat` as local diagnostic state after Codex upgrades or compatibility checks.
 
-Keep this contract narrow. Do not add independent pet catalogs, fake default pet ids, multi-pet firmware bundles, or task states outside the official Codex pet state vocabulary.
+Keep this contract narrow. Do not add independent pet catalogs, fake default pet ids, multi-pet firmware bundles, task states outside the official Codex pet state vocabulary, a second BLE device name, or a second bridge state model for T-Encoder Pro.
 
 ## Pet Animation State Contract
 
@@ -217,7 +234,9 @@ The successful Mac environment has:
 - `venv`
 - PlatformIO in the generated project venv
 - Python packages from `requirements.txt`: `bleak`, `Pillow`
-- a visible Dial serial device during upload, usually `/dev/cu.usbmodem*`
+- a visible target-device serial device during upload, usually `/dev/cu.usbmodem*`
+
+T-Encoder Pro currently also needs its vendor board-support libraries in the firmware project. Keep those libraries in the firmware workspace or upstream dependency setup; do not vendor the large hardware tree into the skill itself.
 - Bluetooth permission for the process running the bridge
 - a generated app wrapper for macOS BLE permission prompts
 - optional LaunchAgent at `~/Library/LaunchAgents/local.codex.dial.bridge.plist`

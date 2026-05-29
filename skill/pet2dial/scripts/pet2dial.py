@@ -20,10 +20,24 @@ DEFAULT_CODEX_HOME = Path.home() / ".codex"
 ROWS = "0,1,2,3,4,5,6,7,8"
 LAUNCH_AGENT_LABEL = "local.codex.dial.bridge"
 PLATFORMIO_VERSION = "platformio==6.1.19"
+T_ENCODER_VENDOR_URL = "https://github.com/Xinyuan-LilyGO/T-Encoder-Pro.git"
+T_ENCODER_VENDOR_COMMIT = "5f5c3bf6a714991001d385ca8c13ca75a41c5a98"
 REQUIRED_MODULES = {
     "bleak": "bleak",
     "PIL": "Pillow",
     "platformio": PLATFORMIO_VERSION,
+}
+TARGETS = {
+    "m5dial": {
+        "firmware_env": "m5dial",
+        "description": "M5Stack Dial / M5StampS3",
+        "requires_vendor": False,
+    },
+    "t-encoder-pro": {
+        "firmware_env": "t_encoder_pro",
+        "description": "LilyGO T-Encoder Pro",
+        "requires_vendor": True,
+    },
 }
 
 
@@ -33,6 +47,18 @@ def skill_dir() -> Path:
 
 def template_dir() -> Path:
     return skill_dir() / "templates" / "project"
+
+
+def target_template_dir(target: str) -> Path:
+    return skill_dir() / "templates" / target
+
+
+def firmware_env(target: str) -> str:
+    return str(TARGETS[target]["firmware_env"])
+
+
+def vendor_dir(project: Path) -> Path:
+    return project / "vendor" / "T-Encoder-Pro"
 
 
 def run(cmd: list[str], cwd: Path | None = None) -> None:
@@ -125,6 +151,9 @@ def doctor(args: argparse.Namespace) -> int:
     codex_home = args.codex_home
     pet_id = selected_pet(codex_home)
     project = args.project
+    target = args.target
+    target_info = TARGETS[target]
+    print(f"Target: {target} ({target_info['description']})")
     ok &= status("macOS", platform.system() == "Darwin", platform.platform())
     ok &= status("Python", sys.version_info >= (3, 10), sys.version.split()[0])
     ok &= status("Codex home", codex_home.exists(), str(codex_home))
@@ -133,7 +162,7 @@ def doctor(args: argparse.Namespace) -> int:
     if pet_id:
         ok &= status("pet package", pet_exists(codex_home, pet_id), str(codex_home / "pets" / pet_id))
     ports = sorted(Path("/dev").glob("cu.usbmodem*"))
-    status("Dial USB serial", bool(ports), ", ".join(str(Path("/dev") / item.name) for item in ports) or "plug Dial into USB for flashing")
+    status("USB serial", bool(ports), ", ".join(str(Path("/dev") / item.name) for item in ports) or "plug target device into USB for flashing")
     if project.exists():
         ok &= status("project", project_ready(project), str(project) if project_ready(project) else f"{project} is missing template files")
         venv_python = project_python(project)
@@ -142,6 +171,9 @@ def doctor(args: argparse.Namespace) -> int:
             missing = missing_modules(venv_python)
             ok &= status("bridge dependencies", not missing, "installed" if not missing else "missing " + ", ".join(missing))
         ok &= status("PlatformIO", Path(project_pio(project)).exists() if isinstance(project_pio(project), Path) else True, str(project_pio(project)))
+        if target_info["requires_vendor"]:
+            vendor = vendor_dir(project)
+            ok &= status("T-Encoder vendor", t_encoder_vendor_ready(project), str(vendor) if vendor.exists() else "run setup-board")
         status("bridge app", bridge_app_path(project).exists(), str(bridge_app_path(project)))
         log = bridge_log_path(project)
         if log.exists():
@@ -378,9 +410,13 @@ def init_project(args: argparse.Namespace) -> int:
         raise SystemExit(f"Project exists and is not empty: {project}. Use --force to refresh template files.")
     project.mkdir(parents=True, exist_ok=True)
     shutil.copytree(template_dir(), project, dirs_exist_ok=True)
+    target_overlay = target_template_dir(args.target)
+    if target_overlay.exists():
+        shutil.copytree(target_overlay, project, dirs_exist_ok=True)
     (project / "state").mkdir(exist_ok=True)
     (project / "logs").mkdir(exist_ok=True)
     print(f"Initialized pet2dial project: {project}")
+    print(f"Target: {args.target} ({TARGETS[args.target]['description']})")
     return 0
 
 
@@ -410,8 +446,46 @@ def ensure_project(args: argparse.Namespace) -> None:
     if project_ready(args.project):
         return
     print(f"[SETUP] Initializing project at {args.project}")
-    init_args = argparse.Namespace(project=args.project, force=False)
+    init_args = argparse.Namespace(project=args.project, force=False, target=args.target)
     init_project(init_args)
+
+
+def t_encoder_vendor_ready(project: Path) -> bool:
+    vendor = vendor_dir(project)
+    required = [
+        vendor / "libraries" / "Mylibrary",
+        vendor / "libraries" / "Arduino_DriveBus",
+    ]
+    return all(path.exists() for path in required)
+
+
+def setup_board(args: argparse.Namespace) -> int:
+    ensure_project(args)
+    if args.target == "m5dial":
+        print("[OK] M5Stack Dial uses PlatformIO-managed dependencies; no board vendor setup required.")
+        return 0
+
+    vendor = vendor_dir(args.project)
+    if vendor.exists() and not (vendor / ".git").exists():
+        raise SystemExit(f"T-Encoder vendor path exists but is not a git checkout: {vendor}")
+    vendor.parent.mkdir(parents=True, exist_ok=True)
+    if not vendor.exists():
+        run(["git", "clone", T_ENCODER_VENDOR_URL, str(vendor)])
+    else:
+        run(["git", "-C", str(vendor), "fetch", "origin"])
+    run(["git", "-C", str(vendor), "checkout", T_ENCODER_VENDOR_COMMIT])
+    if not t_encoder_vendor_ready(args.project):
+        raise SystemExit(f"T-Encoder vendor checkout is missing required libraries: {vendor}")
+    print(f"[OK] T-Encoder Pro vendor ready: {vendor}")
+    print(f"[OK] Vendor commit: {T_ENCODER_VENDOR_COMMIT}")
+    return 0
+
+
+def ensure_board(args: argparse.Namespace) -> None:
+    ensure_project(args)
+    if args.target == "t-encoder-pro" and not t_encoder_vendor_ready(args.project):
+        print("[SETUP] T-Encoder Pro vendor support is missing.")
+        setup_board(args)
 
 
 def missing_modules(python: Path) -> list[str]:
@@ -543,8 +617,9 @@ def convert(args: argparse.Namespace) -> int:
 
 def build(args: argparse.Namespace) -> int:
     ensure_env(args, include_pio=True)
+    ensure_board(args)
     pio = str(project_pio(args.project))
-    run([pio, "run", "-d", str(args.project / "firmware")])
+    run([pio, "run", "-d", str(args.project / "firmware"), "-e", firmware_env(args.target)])
     return 0
 
 
@@ -557,9 +632,10 @@ def first_dial_port() -> str:
 
 def upload(args: argparse.Namespace) -> int:
     ensure_env(args, include_pio=True)
+    ensure_board(args)
     pio = str(project_pio(args.project))
     port = args.port or first_dial_port()
-    run([pio, "run", "-d", str(args.project / "firmware"), "-t", "upload", "--upload-port", port])
+    run([pio, "run", "-d", str(args.project / "firmware"), "-e", firmware_env(args.target), "-t", "upload", "--upload-port", port])
     return 0
 
 
@@ -702,7 +778,7 @@ def verify(args: argparse.Namespace) -> int:
     project = args.project
     checks = [
         ("firmware header", project / "firmware" / "include" / "pet_frames.h"),
-        ("firmware binary", project / "firmware" / ".pio" / "build" / "m5dial" / "firmware.bin"),
+        ("firmware binary", project / "firmware" / ".pio" / "build" / firmware_env(args.target) / "firmware.bin"),
         ("bridge package", project / "codex_dial_bridge" / "cli.py"),
     ]
     ok = True
@@ -717,6 +793,7 @@ def verify(args: argparse.Namespace) -> int:
 def success_path(args: argparse.Namespace) -> int:
     init_project(args)
     setup_env(args)
+    setup_board(args)
     convert(args)
     build(args)
     if args.upload:
@@ -726,9 +803,10 @@ def success_path(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Prepare, flash, and run the Codex pet-to-M5Stack Dial path.")
+    parser = argparse.ArgumentParser(description="Prepare, flash, and run the Codex pet-to-device path.")
     parser.add_argument("--project", type=Path, default=DEFAULT_PROJECT)
     parser.add_argument("--codex-home", type=Path, default=DEFAULT_CODEX_HOME)
+    parser.add_argument("--target", choices=sorted(TARGETS), default="m5dial")
     sub = parser.add_subparsers(dest="command", required=True)
 
     sub.add_parser("doctor")
@@ -736,6 +814,7 @@ def build_parser() -> argparse.ArgumentParser:
     init = sub.add_parser("init")
     init.add_argument("--force", action="store_true")
     sub.add_parser("setup-env")
+    sub.add_parser("setup-board")
 
     convert_cmd = sub.add_parser("convert")
     convert_cmd.add_argument("--pet")
@@ -788,6 +867,8 @@ def main(argv: list[str] | None = None) -> int:
         return init_project(args)
     if args.command == "setup-env":
         return setup_env(args)
+    if args.command == "setup-board":
+        return setup_board(args)
     if args.command == "convert":
         return convert(args)
     if args.command == "build":
